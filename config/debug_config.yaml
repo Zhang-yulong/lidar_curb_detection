@@ -1,0 +1,88 @@
+%YAML:1.0
+
+
+Lidar:
+  selfComputerIP: "192.168.86.70"
+  msopPort: 2368
+  difopPort: 2369
+  lidarType: CH64w
+  verticalUpperAngle: 15
+  verticalLowerAngle: -25
+  scanRings: 128
+  
+Road:
+  leftXMin: -6.0
+  leftXMax: 0.0 #固定
+  leftYMax: 10.0
+  rightXMin: 0.0 #固定
+  rightXMax: 6.0
+  rightYMax: 10.0
+  heightLower: 0.0
+  heightUpper: 0.9
+
+
+GroudSegmentationFromPMF:
+  maxWindowSize: 20
+  slope: 1.0
+  initialDistance: 0.5
+  maxDistance: 3.0
+  cellSize: 3
+  base: 3
+
+
+GroudSegmentationFromSAC:
+  groudSegmentationThreshold: 0.01 #地面分割阈值
+  
+Clustering:
+  leftMinClusterThreshold: 30
+  leftMaxClusterThreshold: 200
+  leftPointsDistance: 5
+  rightMinClusterThreshold: 20
+  rightMaxClusterThreshold: 200
+  rightPointsDistance: 0.5
+  
+  
+HoughLinesP:
+  width: 500
+  height: 600 
+  scale: 50.0
+  # 与点云坐标一致
+  x: 550  #调它能设置窗口上下
+  left_y: 400  #调它能设置窗口左右
+  right_y: 100
+  rho: 1 #累加器的距离分辨率；单位：像素
+  theta: 0.0174532 # π/180
+  threshold: 50
+  minLineLength: 50
+  maxLineGap: 10
+
+CurveFitting:
+  distinguishRoadSideThreshold: 0.0
+  
+RANSAC:
+  interations: 200
+  sigma: 0.5 #点到直线的距离 ax + by + c = 0
+  kMin: 0.0
+  kMax: 0.0
+  
+Model:
+  pcapModel: 0
+  onlyPcd: 0
+  pcdPath: "1731923844781"
+
+Viewer:
+  projection: 1
+  savePicture: 1
+  
+  width: 1000
+  height: 1000 #600 #1000
+  scale: 50.0
+  # 与点云坐标一致
+  x: 900  #550   #900
+  y: 500   #500  #500
+  # 整个窗口向右旋转90度
+  # x: 500
+  # y: 100
+  
+Pcd:
+ savePcd: 0
