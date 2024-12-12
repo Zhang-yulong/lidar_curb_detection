@@ -28,17 +28,19 @@ bool YamlReader::LoadConfig(Config& config)
     config.scanRings            = (int)fs["Lidar"]["scanRings"];
 
     // 读取道路
-    config.leftXMin     = (float)fs["Road"]["leftXMin"];
-    config.leftXMax     = (float)fs["Road"]["leftXMax"];
-    config.leftYMax     = (float)fs["Road"]["leftYMax"];
-    config.rightXMin    = (float)fs["Road"]["rightXMin"];
-    config.rightXMax    = (float)fs["Road"]["rightXMax"];
-    config.rightYMax    = (float)fs["Road"]["rightYMax"];
-    config.heightLower  = (float)fs["Road"]["heightLower"];
-    config.heightUpper  = (float)fs["Road"]["heightUpper"];
+    config.leftXMin             = (float)fs["Road"]["leftXMin"];
+    config.leftXMax             = (float)fs["Road"]["leftXMax"];
+    config.leftYMax             = (float)fs["Road"]["leftYMax"];
+    config.rightXMin            = (float)fs["Road"]["rightXMin"];
+    config.rightXMax            = (float)fs["Road"]["rightXMax"];
+    config.rightYMax            = (float)fs["Road"]["rightYMax"];
+    config.heightLower          = (float)fs["Road"]["heightLower"];
+    config.heightUpper          = (float)fs["Road"]["heightUpper"];
+    config.isDetectionLeftRoad  = (int)fs["Road"]["isDetectionLeftRoad"];
+    config.isDetectionRightRoad = (int)fs["Road"]["isDetectionRightRoad"];
 
     // 读取地面分割SAC算法
-    config.groudSegmentationThreshold   = (float)fs["GroudSegmentationFromSAC"]["groudSegmentationThreshold"];
+    config.groudSegmentationThreshold  = (float)fs["GroudSegmentationFromSAC"]["groudSegmentationThreshold"];
     
     // 读取形态学分割算法
     config.maxWindowSize            = (int)fs["GroudSegmentationFromPMF"]["maxWindowSize"];
@@ -78,14 +80,18 @@ bool YamlReader::LoadConfig(Config& config)
     config.kMin         = (float)fs["RANSAC"]["kMin"];
     config.kMax         = (float)fs["RANSAC"]["kMax"];
 
+    // 读取滑窗滤波
+    config.slideWindowCount = (int)fs["SlideWindow"]["slideWindowCount"];
+
     // 读取模式
-    config.pcapModel    = (int)fs["Model"]["pcapModel"];
-    config.onlyPcd      = (int)fs["Model"]["onlyPcd"];
-    config.pcdPath      = (std::string)fs["Model"]["pcdPath"];
+    config.onlineModel      = (int)fs["Model"]["onlineModel"];
+    config.pcapRunningModel = (int)fs["Model"]["pcapRunningModel"];
+    config.pcdRunningModel  = (int)fs["Model"]["pcdRunningModel"];
+    config.pcdPath          = (std::string)fs["Model"]["pcdPath"];
 
     // 读取Viewer
-    config.projection       = (int)fs["Viewer"]["projection"];
-    config.savePicture      = (int)fs["Viewer"]["savePicture"];
+    config.projectionModel  = (int)fs["Viewer"]["projectionModel"];
+    config.savePictureModel = (int)fs["Viewer"]["savePictureModel"];
     config.viewer_width     = (int)fs["Viewer"]["width"];
     config.viewer_height    = (int)fs["Viewer"]["height"];
     config.viewer_scale     = (float)fs["Viewer"]["scale"];

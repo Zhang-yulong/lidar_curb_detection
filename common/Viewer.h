@@ -1,9 +1,7 @@
 #ifndef VIEWER_H
 #define VIEWER_H
 
-#include <opencv/cv.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>
+#include <opencv2/opencv.hpp>
 #include <iostream>
 #include "Type.h"
 

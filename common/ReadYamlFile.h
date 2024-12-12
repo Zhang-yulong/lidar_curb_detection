@@ -1,9 +1,7 @@
 #ifndef READYAMLFILE_H
 #define READYAMLFILE_H
 
-#include <opencv/cv.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>
+#include <opencv2/opencv.hpp>
 #include <string>
 #include <iostream>
 
@@ -30,6 +28,8 @@ struct Config {
     float rightYMax;
     float heightUpper;
     float heightLower;
+    int isDetectionLeftRoad;
+    int isDetectionRightRoad;
 
     // GroudSegmentationFromSAC:
     float groudSegmentationThreshold;
@@ -72,14 +72,19 @@ struct Config {
     float kMin;
     float kMax;
 
+    // SlidingWindow
+    int isRunningFilter;
+    int slideWindowCount;
+
     // Model
-    int pcapModel;
-    int onlyPcd;
+    int onlineModel;
+    int pcapRunningModel;
+    int pcdRunningModel;
     std::string pcdPath;
 
     // Viewer
-    int projection;
-    int savePicture;
+    int projectionModel;
+    int savePictureModel;
     
     int viewer_width;
     int viewer_height;

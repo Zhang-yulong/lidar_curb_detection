@@ -6,12 +6,13 @@ std::string LS128;
 
 // boost::shared_ptr<pcl::visualization::PCLVisualizer> plane_viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
 
+#if 0
 LeiShenDrive::LeiShenDrive(){
 
     m_pGetLidarData = nullptr;
 	m_pLidarCurbDectection = nullptr;
 }
-
+#endif
 
 LeiShenDrive::LeiShenDrive(Config & config){
 
@@ -26,7 +27,7 @@ LeiShenDrive::~LeiShenDrive(){
 	m_pGetLidarData->LidarStop();
 }
 
-
+#if 1
 void LeiShenDrive::Init(std::string ComputerIP, int MsopPort, int DifopPort, const std::string LidarType, int Number){
 
 	m_sComputerIP = ComputerIP;
@@ -65,7 +66,7 @@ void LeiShenDrive::Init(std::string ComputerIP, int MsopPort, int DifopPort, con
 
 
 }
-
+#endif
 
 
 void LeiShenDrive::Init(){
@@ -77,10 +78,7 @@ void LeiShenDrive::Init(){
     m_sLeiShenType = m_stLSConfig.lidarType;
 
 
-    if(m_sLeiShenType == "LS128"){
-    	m_pGetLidarData = new GetLidarData_LS128;
-	}
-    else if(m_sLeiShenType == "CH64w"){
+   	if(m_sLeiShenType == "CH64w"){
 
 		m_pGetLidarData = new GetLidarData_CH64w();
 
@@ -116,12 +114,20 @@ void LeiShenDrive::CallBackFunction(std::vector<MuchLidarData> LidarDataValue, i
 {
 	struct timeval tNow;
 	gettimeofday(&tNow, NULL);
-	m_Mutex.lock();
+
+	// {
+	// 	std::lock_guard<std::mutex> lock(m_DataMutex);
+	// 	m_vLidarData.clear();
+    // 	m_vLidarData = LidarDataValue;
+   	// 	m_ullCatchTimeStamp = ((unsigned long long)tNow.tv_sec)*1000 + ((unsigned long long)tNow.tv_usec)/1000;
+	// }
+
+	m_DataMutex.lock();
 	m_vLidarData.clear();
     m_vLidarData = LidarDataValue;
    	m_ullCatchTimeStamp = ((unsigned long long)tNow.tv_sec)*1000 + ((unsigned long long)tNow.tv_usec)/1000;
-    m_Mutex.unlock();
-	printf("(In leishen callback function) time = %lld, size = %d\n", m_ullCatchTimeStamp, LidarDataValue.size());
+    m_DataMutex.unlock();
+	// printf("(In leishen callback function) time = %lld, size = %d\n", m_ullCatchTimeStamp, LidarDataValue.size());
 }
 
 
@@ -170,8 +176,6 @@ void LeiShenDrive::startGetDataSock(void *pth )
 //获取数据包的端口号
 void LeiShenDrive::GetDataSock()
 {
-
-
 	//创建socket
 	int m_sock = socket(2, 2, 0);			//构建sock
 	//******************UDP通信初始化**************************//
@@ -308,7 +312,7 @@ void LeiShenDrive::VoxelGridProcess(PointCloud2Intensity::Ptr &pOutputCloud){
 	sor.setInputCloud (pOutputCloud);    			//设置需要过滤的点云给滤波对象
 	sor.setLeafSize (0.05, 0.05, 0.05);             //设置滤波时创建的体素体积，单位m，因为保留点云大体形状的方式是保留每个体素的中心点，所以体素体积越大那么过滤掉的点云就越多
 	sor.filter (*pOutputCloud);          			//执行滤波处理
-	std::cout<<"下采样后点云数量："<<pOutputCloud->points.size()<<std::endl;
+	// std::cout<<"下采样后点云数量："<<pOutputCloud->points.size()<<std::endl;
 }
 
 
@@ -375,12 +379,17 @@ void LeiShenDrive::PointCloudTransform(std::vector<MuchLidarData> vTmpLidarData,
 unsigned long long LeiShenDrive::GetPointCloudFromOnline(PointCloud2Intensity::Ptr &pOutputCloud)
 {
 	unsigned long long ullTimestamp = 0;
-	
 	std::vector<MuchLidarData> vTmpLidarData;
-	m_Mutex.lock();
+
+	// {
+	// 	std::lock_guard<std::mutex> lock(m_DataMutex);
+	// 	vTmpLidarData = m_vLidarData;
+	// 	ullTimestamp = m_ullCatchTimeStamp;
+	// }
+	m_DataMutex.lock();
 	vTmpLidarData = m_vLidarData;
 	ullTimestamp = m_ullCatchTimeStamp;
-	m_Mutex.unlock();
+	m_DataMutex.unlock();
 	PointCloudTransform(vTmpLidarData, pOutputCloud);
 	
 	return ullTimestamp;
@@ -427,27 +436,28 @@ void LeiShenDrive::Start(){
 
     std::thread thread1( [=]() {  //lamda表达式创建线程？？？
 
-		
-		bool bPcapModel =  m_stLSConfig.pcapModel;
-		bool bOnlyPcd = m_stLSConfig.onlyPcd;
-		bool bSavePcdFlag = m_stLSConfig.savePcd;
+		bool bOnlineModel 	= m_stLSConfig.onlineModel;
+		bool bPcapModel 	= m_stLSConfig.pcapRunningModel;
+		bool bPcdModel 		= m_stLSConfig.pcdRunningModel;
+		bool bSavePcdFlag 	= m_stLSConfig.savePcd;
 
 		PointCloud2Intensity::Ptr pPointCloud(new PointCloud2Intensity);
 
-		pcl_viewer = std::make_shared< pcl::visualization::PCLVisualizer>("LSPointCloudViewer");	//标题栏定义一个名称"LSPointCloudViewer"
-		pcl_viewer->setBackgroundColor(0.0, 0.0, 0.0);	//黑色背景
-		pcl_viewer->addCoordinateSystem(1.0);	//显示坐标系统方向，可以通过使用X（红色）、Y（绿色）、Z（蓝色）圆柱体代表坐标轴的显示方式来解决，圆柱体的大小通过scale参数控制
-		pcl_viewer->addPointCloud<pcl::PointXYZI>(pPointCloud, "lslidar");	// 显示点云，
-		pcl_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "lslidar"); // 显示自定义颜色数据，每个点云的RGB颜色字段
+//		pcl_viewer = std::make_shared< pcl::visualization::PCLVisualizer>("LSPointCloudViewer");	//标题栏定义一个名称"LSPointCloudViewer"
+//		pcl_viewer->setBackgroundColor(0.0, 0.0, 0.0);	//黑色背景
+//		pcl_viewer->addCoordinateSystem(1.0);	//显示坐标系统方向，可以通过使用X（红色）、Y（绿色）、Z（蓝色）圆柱体代表坐标轴的显示方式来解决，圆柱体的大小通过scale参数控制
+//		pcl_viewer->addPointCloud<pcl::PointXYZI>(pPointCloud, "lslidar");	// 显示点云，
+//		pcl_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "lslidar"); // 显示自定义颜色数据，每个点云的RGB颜色字段
 
-		if(bOnlyPcd)
+		if(bPcdModel)
 		{
+			LOG_RAW("读取pcd模式\n");
 			/*读一张pcd*/
 			m_ullUseTimeStamp = GetPointCloudFromPcd(pPointCloud);
 
-			pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity"); 
-			pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
-			// pcl_viewer->spinOnce(); 
+//			pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity");
+//			pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
+			// // pcl_viewer->spinOnce();
 	
 			VoxelGridProcess(pPointCloud);
 			
@@ -464,11 +474,19 @@ void LeiShenDrive::Start(){
 
 				/*	没有加入周洋代码前的正常运行代码，pcap回放*/
 				if(bPcapModel){
-					m_Mutex.lock();
+					
+					// std::vector<MuchLidarData> m_vLidarData_temp;
+					// {
+					// 	std::lock_guard<std::mutex> lock(m_DataMutex);
+					// 	m_vLidarData_temp = m_vLidarData;
+					// 	m_ullUseTimeStamp = m_ullCatchTimeStamp;
+					// }
+
+					m_DataMutex.lock();
 					std::vector<MuchLidarData> m_vLidarData_temp;
 					m_vLidarData_temp = m_vLidarData;
 					m_ullUseTimeStamp = m_ullCatchTimeStamp;
-					m_Mutex.unlock();
+					m_DataMutex.unlock();
 
 					//	去掉点云中无效点
 					for(u_int m_FF = 0; m_FF < m_vLidarData_temp.size(); m_FF++)
@@ -493,20 +511,23 @@ void LeiShenDrive::Start(){
 						pPointCloud->points.push_back(tmppoint);
 					}
 				}
-				else{
-					/*	现场小车跑*/
+				
+				/*	现场小车跑*/
+				if(bOnlineModel){
+					
 					m_ullUseTimeStamp = GetPointCloudFromOnline(pPointCloud); //涉及数据接收 + 雷达点云坐标转换, 这里pPointCloud是输出
 				}	
 
 				/*	保存点云*/
 				if(bSavePcdFlag){
+					LOG_RAW("保存点云\n");
 					SavePcd(pPointCloud, m_ullUseTimeStamp); 
 				}
 				
 
-				pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity"); 
-				pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
-				pcl_viewer->spinOnce(); 
+//				pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity");
+//				pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
+//				pcl_viewer->spinOnce();
 				
 		
 				/*先使用体素滤波向下采样处理点云*/

@@ -77,12 +77,11 @@ private:
     Fun fun;
     GetLidarData *m_pGetLidarData;
     LidarCurbDectection *m_pLidarCurbDectection;
-    // YamlReader *m_pYamlReader;
     Config m_stLSConfig;
 
     
     std::vector<MuchLidarData> m_vLidarData;
-    std::mutex m_Mutex;
+    std::mutex m_DataMutex;
 
     std::shared_ptr<pcl::visualization::PCLVisualizer> pcl_viewer;
 

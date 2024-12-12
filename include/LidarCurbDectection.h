@@ -14,11 +14,16 @@
 #include <pcl/segmentation/progressive_morphological_filter.h>
 #include <pcl/segmentation/approximate_progressive_morphological_filter.h>
 
-#include <opencv2/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#include <Eigen/Dense>
 
 #include <algorithm>
 #include <chrono>
 #include <time.h>
+#include <condition_variable>
+#include <queue>
 // #include "ConnectTools.h"
 #include "Type.h"
 #include "CurveFitting.h"
@@ -35,6 +40,18 @@ struct LineInfo {
     cv::Vec4f lineParams; // 直线参数 (vx, vy, x0, y0)
     double length;        // 直线长度
     double avg_x;
+};
+
+
+struct PolarLine{
+    double rho;     //距原点的距离
+    double theta;   //法向量与x轴的夹角
+};
+
+struct LineRunningInfo{
+    long runningValue;   //程序运行次数
+    bool existFlag;
+    PointCloud2Intensity::Ptr linePointCloud;
 };
 
 
@@ -94,7 +111,9 @@ private:
     double computeYDistance(const cv::Point2f& center1, const cv::Point2f& center2);
     double pointToLineDistance(const cv::Point& pt, const cv::Vec4f& line);
     bool isLineAngleValid(const cv::Vec4f& line, double maxAngle);
-    
+    void normalizeLineABC(double &A, double &B, double &C);    
+
+
     cv::Point2f computeCentroid(const std::vector<cv::Point>& contour);
     void splitContoursByCentroid(const std::vector<cv::Point>& contour, 
                              std::vector<cv::Point>& finalContour, 
@@ -116,6 +135,8 @@ private:
     void EdgeClusteringProcess( PointCloud2Intensity::Ptr pAfterVoxelGrid, 
                                 PointCloud2Intensity::Ptr pNoGroudPoints, 
                                 unsigned long long ullTime);
+
+    PointCloud2Intensity::Ptr SlideWindowProcess(std::queue<LineRunningInfo> &qFinalClusterInfo);
 
     // void CurveFitting(PointCloud2Intensity::Ptr pInCloud, std::vector<pcl::PointIndices> &vClusterIndices);  //尝试写的另一个文件里
     
@@ -147,9 +168,9 @@ private:
     Viewer *m_pViewer;
     Config m_stLCDConfig;
     
-
-
-
+    long m_iSystemRunCount;   //记录程序运行次数
+    std::queue<LineRunningInfo> m_qLeftLineInfo;
+    std::queue<LineRunningInfo> m_qRightLineInfo;
 };
 
 #endif

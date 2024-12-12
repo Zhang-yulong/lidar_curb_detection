@@ -7,6 +7,7 @@
 #include "Type.h"
 #include "ReadYamlFile.h"
 #include "kalman.h"
+#include "ulog_api.h"
 
 class LineKalmanFilter;
 

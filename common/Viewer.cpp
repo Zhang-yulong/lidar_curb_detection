@@ -225,7 +225,7 @@ void Viewer::ProjectPointCloud(const PointCloud2Intensity::Ptr &pAllInit, const 
 
             // 检查是否在图像边界内
             if (x >= 0 && x < m_iWidth && y >= 0 && y < m_iHeight)
-                circle(m_image, Point(y, x), 3, Scalar(255, 255, 255), -1); // 绘制白色小圆点
+                circle(m_image, Point(y, x), 1, Scalar(255, 255, 255), -1); // 绘制白色小圆点
             // else
             //     printf("原始点云不在图像内 (%d , %d)\n",x,y);
         
@@ -242,7 +242,7 @@ void Viewer::ProjectPointCloud(const PointCloud2Intensity::Ptr &pAllInit, const 
 
             // 检查是否在图像边界内
             if (x >= 0 && x < m_iWidth && y >= 0 && y < m_iHeight)
-                circle(m_image, Point(y, x), 2, Scalar(0, 0, 255), -1); // 绘制红色小圆点
+                circle(m_image, Point(y, x), 1, Scalar(0, 0, 255), -1); // 绘制红色小圆点
             else
                 printf("非地面点点云不在图像内 (%d , %d)\n",x,y);
 
@@ -278,7 +278,7 @@ void Viewer::ProjectPointCloud(const PointCloud2Intensity::Ptr &pAllInit, const 
 
             // 检查是否在图像边界内
             if (x >= 0 && x < m_iWidth && y >= 0 && y < m_iHeight)
-                circle(m_image, Point(y, x), 10, Scalar(255, 0, 0), -1); // 绘制蓝色小圆点
+                circle(m_image, Point(y, x), 5, Scalar(255, 0, 0), -1); // 绘制蓝色小圆点
             else
                 printf("拟合直线点云不在图像内 (%d , %d)\n",x,y);
 

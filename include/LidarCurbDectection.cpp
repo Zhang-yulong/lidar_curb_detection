@@ -241,6 +241,7 @@ LidarCurbDectection::LidarCurbDectection(Config & config)
     m_pAll_deal_cluster_cloud = boost::make_shared<PointCloud2RGB>();
     m_pAll_output_curve_cloud = boost::make_shared<PointCloud2RGB>();
 
+    m_iSystemRunCount = 0;
 }
 
 
@@ -293,7 +294,7 @@ void LidarCurbDectection::ExtractPointsByHeightDifference(PointCloud2Intensity::
     float fHeightLower = m_stLCDConfig.heightLower;
     float fHeightUpper = m_stLCDConfig.heightUpper;
 
-     std::cout<<"进高度差函数的点数: "<<pInCloud->points.size()<<std::endl;
+    // std::cout<<"进高度差函数的点数: "<<pInCloud->points.size()<<std::endl;
 
 
     PointCloud2Intensity::Ptr temp(new PointCloud2Intensity);
@@ -314,8 +315,7 @@ void LidarCurbDectection::ExtractPointsByHeightDifference(PointCloud2Intensity::
 
     *pInCloud = *temp;
     
-    std::cout<<"高度差范围内的点: "<<count<<" , 高度差筛选后，剩下的点："<<temp->points.size()<<std::endl;
-
+    LOG_RAW("高度差筛选后，剩下的点： %d\n",temp->points.size());
 }
 
 
@@ -621,6 +621,24 @@ void LidarCurbDectection::ransacFitLine(const std::vector<cv::Point>& points, cv
     // std::cout<<"结束"<<std::endl;
 }
 
+
+void LidarCurbDectection::normalizeLineABC(double &A, double &B, double &C){
+    
+    //计算归一化系数
+    double norm = std::sqrt(A*A + B*B);
+
+    if(norm < 1e-6) {
+        std::cerr<<"Line normalization failed"<<std::endl;
+        return;
+    }
+
+    A /= norm;
+    B /= norm;
+    C /= norm; 
+}
+
+
+
 //正常findOnlyFitCluster
 #if 1
 // void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>> &InitContours, const int sideFlag){
@@ -635,7 +653,7 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
     for(int i = 0; i < InitContours.size(); i++){
 
         if(InitContours[i].size() <= 25 ){
-            std::cout<<" 剔除轮廓区域点数少与25, 点数： "<<InitContours[i].size()<<std::endl;
+            // std::cout<<" 剔除轮廓区域点数少与25, 点数： "<<InitContours[i].size()<<std::endl;
             
             cv::drawContours(image, InitContours, static_cast<int>(i), cv::Scalar(255,0,0), -1); //应该是蓝色
            
@@ -644,7 +662,7 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
             
         // 拟合直线
         cv::Vec4f lineParams;
-        cv::fitLine(InitContours[i], lineParams, cv::DIST_L2, 0, 0.01, 0.01); //该函数会把轮廓区域内所有的点
+        cv::fitLine(InitContours[i], lineParams, CV_DIST_L2, 0, 0.01, 0.01); //该函数会把轮廓区域内所有的点
 
         // 提取拟合直线的方向向量 (vx, vy)，直线上一点(x0, y0)
         float vx = lineParams[0];
@@ -664,9 +682,9 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
         double angle = std::atan2(vy, vx) * 180.0 / CV_PI; // 转为角度
         angle = std::abs(angle); // 只关心绝对值 [-180,180]
 
-        //剔除与水平夹角小于80度的线
-        if(angle < 80){
-            std::cout <<" 该簇估计方向小于80度 , 实际角度： "<<angle<<std::endl;
+        //剔除与水平夹角小于60度的线
+        if(angle < 60){
+            // std::cout <<" 该簇估计方向小于60度 , 实际角度： "<<angle<<std::endl;
             
             cv::drawContours(image, InitContours, static_cast<int>(i), cv::Scalar(0,0,255), -1); //应该是红色
             
@@ -685,7 +703,7 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
             minY = std::min(minY, InitContours[i][j].y);
             maxY = std::max(maxY, InitContours[i][j].y);
         }
-        std::cout<<"(xmin,xmax): "<<minX<<" , "<<maxX<<" , (ymin,ymax)"<<minY<<" , "<<maxY<<std::endl;
+        // std::cout<<"(xmin,xmax): "<<minX<<" , "<<maxX<<" , (ymin,ymax): "<<minY<<" , "<<maxY<<std::endl;
         // 判断直线的方向
         // const float epsilon = 1e-6;
         // if (std::fabs(vx) < epsilon) {
@@ -703,12 +721,12 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
         length =  maxY - minY;
         //剔除直线
         if(length <= 75) {//单位：像素，应该与缩放大小有关 1米5以下就踢掉
-            std::cout<<"轮廓区域长度: "<<length<<std::endl;
+            // std::cout<<"轮廓区域长度: "<<length<<std::endl;
             continue;
         }
         cv::drawContours(image, InitContours, static_cast<int>(i), cv::Scalar(0,255,0), -1); //应该是绿色
        
-        std::cout<<"轮廓点数: "<<InitContours[i].size()<<" , 轮廓方向: "<<angle<<" , 轮廓长度： "<<length<<std::endl;
+        LOG_RAW("轮廓点数: %d, 轮廓方向: %f, 轮廓长度:%f\n", InitContours[i].size(), angle, length);
 
         // std::vector<float> projections;
         // for (const auto& point : contour) {
@@ -1212,87 +1230,128 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
     
     std::vector<std::vector<cv::Point>> cv_clusters;// 存储簇的容器
     std::cout<<"最终合适的轮廓个数： "<<contours.size()<<std::endl;
-    for (int i = 0; i< contours.size(); i++) {
+    
+//正常    
+#if 1    
+    for (int i = 0; i < contours.size(); i++) {
           
-        // if(contours[i].size() < 20) {
-        //     // std::cout<<" 剔除区域点数少与30,点数 "<<contours[i].size()<<std::endl;
-        //     continue; // 忽略太小的轮廓
-        // }
-        // else {
-            // std::cout<<"   区域点数 "<<contours[i].size()<<std::endl;
-            cv::Mat mask = cv::Mat::zeros(temp_image.size(), CV_8UC1);
-            mergedContours.push_back(contours[i]);
-            // // 在掩码上绘制当前轮廓
-            cv::drawContours(mask, contours, static_cast<int>(i), cv::Scalar(255), -1);
+        
+        // std::cout<<"   区域点数 "<<contours[i].size()<<std::endl;
+        cv::Mat mask = cv::Mat::zeros(temp_image.size(), CV_8UC1);
+        mergedContours.push_back(contours[i]);
+        // // 在掩码上绘制当前轮廓
+        cv::drawContours(mask, contours, static_cast<int>(i), cv::Scalar(255), -1);
 
-            // 提取轮廓内mergedContours的非零点
-            std::vector<cv::Point> points;
-            cv::findNonZero(mask, points);
+        // 提取轮廓内mergedContours的非零点
+        std::vector<cv::Point> points;
+        cv::findNonZero(mask, points);
 
 
-            // 将提取的点存入簇容器
-            cv_clusters.push_back(points);
+        // 将提取的点存入簇容器
+        cv_clusters.push_back(points);
+        
+        if(iSideFlag == 0 && !points.empty()) {             //右
+
+            PointCloud2Intensity::Ptr pReflectionLidar_right(new PointCloud2Intensity);
             
-            if(iSideFlag == 0 && !points.empty()) { //右
+            for(int j = 0; j < points.size(); j++) {
 
-                PointCloud2Intensity::Ptr pReflectionLidar_right(new PointCloud2Intensity);
-                
-                for(int j = 0; j < points.size(); j++) {
-
-                    pcl::PointXYZI point;
-                    pcl::PointXYZRGB colored_point;
-                    float x0 = 0.02 * points[j].x - 2;      //以后计算完逆矩阵后需要把x和y对调
-                    float y0 = -0.02 * points[j].y + 11;
-                
-                    point.x = x0;
-                    point.y = y0;
-                    point.z = 1;
-                    point.intensity = 0;
-                    pReflectionLidar_right->points.push_back(point);
-                    
-
-                    colored_point.x = x0;
-                    colored_point.y = y0;
-                    colored_point.z = 1;
-                    colored_point.r = 0;
-                    colored_point.g = 255;  //绿色
-                    colored_point.b = 0;
-                    m_pAll_deal_cluster_cloud->points.push_back(colored_point);
-                }
-                vClusterPtr.push_back(pReflectionLidar_right);
-            }
-            else if(iSideFlag == 1 && !points.empty()) {               //左
-
-                PointCloud2Intensity::Ptr pReflectionLidar_left(new PointCloud2Intensity);
-                
-                for(int j = 0; j < points.size(); j++) {
-
-                    pcl::PointXYZI point;
-                    pcl::PointXYZRGB colored_point;
-                    float x1 = 0.02 * points[j].x - 8;
-                    float y1 = -0.02 * points[j].y + 11;
-                
-                    point.x = x1;
-                    point.y = y1;
-                    point.z = 1;
-                    point.intensity = 0;
-                    pReflectionLidar_left->points.push_back(point);
-                    
-                    colored_point.x = x1;
-                    colored_point.y = y1;
-                    colored_point.z = 1;
-                    colored_point.r = 0;
-                    colored_point.g = 255;  //绿色
-                    colored_point.b = 0;
-                    m_pAll_deal_cluster_cloud->points.push_back(colored_point);
-                }
-                vClusterPtr.push_back(pReflectionLidar_left);
-            }
+                pcl::PointXYZI point;
+                pcl::PointXYZRGB colored_point;
+                float x0 = 0.02 * points[j].x - 2;      //以后计算完逆矩阵后需要把x和y对调
+                float y0 = -0.02 * points[j].y + 11;
             
-        //}
+                point.x = x0;
+                point.y = y0;
+                point.z = 1;
+                point.intensity = 0;
+                pReflectionLidar_right->points.push_back(point);
+                
+
+                colored_point.x = x0;
+                colored_point.y = y0;
+                colored_point.z = 1;
+                colored_point.r = 0;
+                colored_point.g = 255;  //绿色
+                colored_point.b = 0;
+                m_pAll_deal_cluster_cloud->points.push_back(colored_point);
+            }
+            vClusterPtr.push_back(pReflectionLidar_right);
+        }
+        else if(iSideFlag == 1 && !points.empty()) {        //左
+
+            PointCloud2Intensity::Ptr pReflectionLidar_left(new PointCloud2Intensity);
+            
+            for(int j = 0; j < points.size(); j++) {
+
+                pcl::PointXYZI point;
+                pcl::PointXYZRGB colored_point;
+                float x1 = 0.02 * points[j].x - 8;
+                float y1 = -0.02 * points[j].y + 11;
+            
+                point.x = x1;
+                point.y = y1;
+                point.z = 1;
+                point.intensity = 0;
+                pReflectionLidar_left->points.push_back(point);
+                
+                colored_point.x = x1;
+                colored_point.y = y1;
+                colored_point.z = 1;
+                colored_point.r = 0;
+                colored_point.g = 255;  //绿色
+                colored_point.b = 0;
+                m_pAll_deal_cluster_cloud->points.push_back(colored_point);
+            }
+            vClusterPtr.push_back(pReflectionLidar_left);
+        }
+            
     }
+#endif
 
+//试试正交二乘法用极坐标的形式，直接用轮廓点了，不进行轮廓投影
+    for (int i = 0; i < contours.size(); i++) {
+        
+        Eigen::Vector2d mean(0, 0);
+        for(int j = 0; j < contours[i].size(); j++){
+            mean.x() += contours[i][j].x;
+            mean.y() += contours[i][j].y;
+        }
 
+        mean.x() /= contours[i].size();
+        mean.y() /= contours[i].size();
+
+        // 构建中心化矩阵
+        Eigen::MatrixXd centered(contours[i].size(), 2);
+        for (int k = 0; k < contours[i].size(); ++k) {
+            centered(k, 0) = contours[i][k].x - mean.x();
+            centered(k, 1) = contours[i][k].y - mean.y();
+        }
+
+        // SVD 分解
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd(centered, Eigen::ComputeFullV);
+        Eigen::Vector2d normal = svd.matrixV().col(1);  // 最小奇异值对应的右奇异向量
+
+        // 提取 rho 和 theta
+        double theta = atan2(normal.y(), normal.x());
+        double rho = mean.x() * normal.x() + mean.y() * normal.y();
+
+        // 保证 rho 为正
+        if (rho < 0) {
+            rho = -rho;
+            theta += M_PI;
+        }
+
+        // 归一化 theta 到 [0, π)
+        theta = fmod(theta, M_PI);  //取余操作
+
+        double A = cos(theta);
+        double B = sin(theta);
+        double C = -rho;
+
+        normalizeLineABC(A, B, C);
+
+    }
 
     // cv::Mat result = cv::Mat::zeros(temp_image.size(), CV_8UC3);
     // for (size_t i = 0; i < mergedContours.size(); i++) {
@@ -1570,7 +1629,7 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
     //图片下面加注释
     std::string white = "white: All contours";
     std::string blue = "blue: contour less than 25";
-    std::string red = "red: direction less than 80 degrees";
+    std::string red = "red: direction less than 60 degrees";
     std::string green = "green: result";
     line(result, Point(0, offset.x -10), Point(iWidth, offset.x -10), Scalar(255, 255, 255), 1);  // 白色线
     putText(result, white, Point(0, offset.x + 10), 
@@ -1657,8 +1716,8 @@ bool LidarCurbDectection::FinalSend(int iLeftId, int iRightId){
 
 void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfterVoxelGrid, PointCloud2Intensity::Ptr pNoGroudPoints, unsigned long long ullTime){
     
-    bool bProjection = m_stLCDConfig.projection;
-    bool bSavePicture = m_stLCDConfig.savePicture;
+    bool bProjectionModel = m_stLCDConfig.projectionModel;
+    bool bSavePictureModel = m_stLCDConfig.savePictureModel;
 
     float fLeftMinClusterThreshold = m_stLCDConfig.leftMinClusterThreshold;
     float fLeftMaxClusterThreshold = m_stLCDConfig.leftMaxClusterThreshold;
@@ -1715,8 +1774,8 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
     bool right_flag;
     bool left_flag;
 
-    int iLeftId = -1;
-    int iRightId = -1;
+    LineRunningInfo left_line_running_info;
+    LineRunningInfo right_line_running_info;
 
     //发送
     STR_CV_LANE_DATA strCurbs;
@@ -1734,14 +1793,17 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
     //     return 0;
     // }
 
+//右侧无滤波
 #if 1
-    double x_right_avg = 0;
-    if(!vCrudeExtractTwoEdgeCloudPtrList[0]->points.empty()){     //右侧
-        
+    if( m_stLCDConfig.isDetectionRightRoad && 
+        !m_stLCDConfig.isRunningFilter &&
+        !vCrudeExtractTwoEdgeCloudPtrList[0]->points.empty())     
+    {    
         pResult->points.clear();
 
         //计算簇的平均x坐标
         double x_sum = 0;
+        double x_right_avg = 0;
         for (const auto& point : vCrudeExtractTwoEdgeCloudPtrList[0]->points) {
             x_sum += point.x;
         }
@@ -1761,62 +1823,66 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
         }
         double z_avg = z_sum / vCrudeExtractTwoEdgeCloudPtrList[0]->size();
 
-        
-        std::cout<<"***道路右侧输入的点数: "<<vCrudeExtractTwoEdgeCloudPtrList[0]->points.size()<<" , 平均x: "<<x_right_avg<<" , 平均y: "<<y_avg<<" , 平均z: "<<z_avg<<std::endl;
+        LOG_RAW("***道路右侧输入的点数: %d , 平均x: %f , 平均y: %f , 平均z: %f\n", vCrudeExtractTwoEdgeCloudPtrList[0]->points.size(), x_right_avg, y_avg, z_avg);
         right_flag = IsClustering_hough(vCrudeExtractTwoEdgeCloudPtrList[0], clusters_ptr_right, ullTime, 0);
         // right_flag = IsClustering(fRightPointsDistance, fRightMaxClusterThreshold, fRightMinClusterThreshold, vCrudeExtractTwoEdgeCloudPtrList[0], clusters_ptr_right);
         // right_flag = IsClustering(0.5, 200, 20, vCrudeExtractTwoEdgeCloudPtrList[0], clusters_indices_right);
         // // if(right_flag)
         // //     vClusterIndices.insert(vClusterIndices.end(),cluster_indices_right.begin(),cluster_indices_right.end());
+       
         if(right_flag){
+
             if(clusters_ptr_right.size() >= 2){
                 // pLastestRightCluster = getLargestCluster(clusters_ptr_right);
                 pLastestRightCluster = getCloserRightCluster(clusters_ptr_right);
                 // vClusters.push_back(pLastestRightCluster);
-                std::cout<<"右侧大于2个簇, 点云数量："<<pLastestRightCluster->points.size()<<std::endl;
+                LOG_RAW("右侧大于2个簇, 点云数量： %d\n", pLastestRightCluster->points.size());
             }
             else{
                 pLastestRightCluster = getCluster(clusters_ptr_right);
                 // vClusters.push_back(pLastestRightCluster);
-                std::cout<<"右侧只有1簇, 点云数量："<<pLastestRightCluster->points.size()<<std::endl;
+                LOG_RAW("右侧只有1簇, 点云数量： %d\n", pLastestRightCluster->points.size());
             }
 
-            
             //曲线拟合计算
             pResult = m_pCurveFitting->CurveFittingStart(pLastestRightCluster,ullTime,0); 
-            if(!pResult->points.empty()){
-                file_right<<ullTime<<","<<pResult->points[0].x<<","<<pResult->points[0].y<<","<<pResult->points[1].x<<","<<pResult->points[1].y<<endl;
-                file_right.close();
-                iLeftId = 1;  
-                strCurbs.iCounts += 1;
-                strCurbs.pstrCVLane[0].byType = 1;
-                for(int i = 0; i < pResult->points.size(); i++){
-                    float x = pResult->points[i].x;
-                    float y = pResult->points[i].y;
-                    strCurbs.pstrCVLane[0].pstrPoint2fBirdEyeView[i].fX = x;
-                    strCurbs.pstrCVLane[0].pstrPoint2fBirdEyeView[i].fY = y;
-                    strCurbs.pstrCVLane[0].pstrPoint2fCamera[i].fX = x;
-                    strCurbs.pstrCVLane[0].pstrPoint2fCamera[i].fY = y; 
-                    printf("   最后结果点数 = %d, i = %d, x = %f, y = %f \n",pResult->points.size(), i, x, y);
+            
+           
+            file_right<<ullTime<<","<<pResult->points[0].x<<","<<pResult->points[0].y<<","<<pResult->points[1].x<<","<<pResult->points[1].y<<endl;
+            file_right.close();
+            
+            strCurbs.iCounts += 1;
+            strCurbs.pstrCVLane[0].byType = 1;
+            for(int i = 0; i < pResult->points.size(); i++){
+                float x = pResult->points[i].x;
+                float y = pResult->points[i].y;
+                strCurbs.pstrCVLane[0].pstrPoint2fBirdEyeView[i].fX = x;
+                strCurbs.pstrCVLane[0].pstrPoint2fBirdEyeView[i].fY = y;
+                strCurbs.pstrCVLane[0].pstrPoint2fCamera[i].fX = x;
+                strCurbs.pstrCVLane[0].pstrPoint2fCamera[i].fY = y; 
+                LOG_RAW("   最后结果点数 = %d, i = %d, x = %f, y = %f\n", pResult->points.size(), i, x, y);
 
-                    pcl::PointXYZRGB tempRGB;
-                    tempRGB.x = x;
-                    tempRGB.y = y;
-                    tempRGB.z = 0;
-                    tempRGB.r = 255;
-                    tempRGB.g = 255;
-                    tempRGB.b = 255;
-                    m_pAll_output_curve_cloud->points.push_back(tempRGB);
-                }
+                pcl::PointXYZRGB tempRGB;
+                tempRGB.x = x;
+                tempRGB.y = y;
+                tempRGB.z = 0;
+                tempRGB.r = 255;
+                tempRGB.g = 255;
+                tempRGB.b = 255;
+                m_pAll_output_curve_cloud->points.push_back(tempRGB);
             }
+            
         }
     }
 #endif
 
+//左侧无滤波
 #if 1
     double x_left_avg = 0;
-    if(!vCrudeExtractTwoEdgeCloudPtrList[1]->points.empty()){     //左侧
-        
+    if( m_stLCDConfig.isDetectionLeftRoad && 
+        !m_stLCDConfig.isRunningFilter &&
+        !vCrudeExtractTwoEdgeCloudPtrList[1]->points.empty())     
+    {    
         pResult->points.clear();
 
         //计算簇的平均x坐标
@@ -1839,71 +1905,184 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
             z_sum += point.z;
         }
         double z_avg = z_sum / vCrudeExtractTwoEdgeCloudPtrList[1]->size();
-
         
-        std::cout<<"***道路左侧输入的点数: "<<vCrudeExtractTwoEdgeCloudPtrList[1]->points.size()<<" , 平均x: "<<x_left_avg<<" , 平均y: "<<y_avg<<" , 平均z: "<<z_avg<<std::endl;
+        LOG_RAW("***道路左侧输入的点数: %d , 平均x: %f , 平均y: %f , 平均z: %f\n", vCrudeExtractTwoEdgeCloudPtrList[1]->points.size(), x_left_avg, y_avg, z_avg);
         left_flag = IsClustering_hough(vCrudeExtractTwoEdgeCloudPtrList[1], clusters_ptr_left, ullTime, 1);
         // left_flag = IsClustering(fLeftPointsDistance, fLeftMaxClusterThreshold, fLeftMinClusterThreshold, vCrudeExtractTwoEdgeCloudPtrList[1], clusters_ptr_left);
         // left_flag = IsClustering(1, 200, 10, vCrudeExtractTwoEdgeCloudPtrList[1], clusters_indices_left);
         
         // //if(left_flag)
         // //    vClusterIndices.insert(vClusterIndices.end(),cluster_indices_left.begin(),cluster_indices_left.end());
+        
         if(left_flag){
+
             if(clusters_ptr_left.size() >= 2){
                 // pLastestLeftCluster = getLargestCluster(clusters_ptr_left);
                 pLastestLeftCluster = getCloserLeftCluster(clusters_ptr_left);
                 // vClusters.push_back(pLastestLeftCluster);
-                std::cout<<"左侧大于2个簇, 点云数量："<<pLastestLeftCluster->points.size()<<std::endl;
+                LOG_RAW("左侧大于2个簇, 点云数量： %d\n", pLastestLeftCluster->points.size());
             }
             else{
                 pLastestLeftCluster = getCluster(clusters_ptr_left);
                 // vClusters.push_back(pLastestLeftCluster);
-                std::cout<<"左侧只有1簇, 点云数量："<<pLastestLeftCluster->points.size()<<std::endl;
+                LOG_RAW("左侧只有1个簇, 点云数量： %d\n", pLastestLeftCluster->points.size());
+            }
+
+            //曲线拟合计算
+            pResult = m_pCurveFitting->CurveFittingStart(pLastestLeftCluster,ullTime,1);
+
+            file_left<<ullTime<<","<<pResult->points[0].x<<","<<pResult->points[0].y<<","<<pResult->points[1].x<<","<<pResult->points[1].y<<endl;
+            file_left.close();
+
+            strCurbs.iCounts += 1;
+            strCurbs.pstrCVLane[0].byType = 1;
+            for(int i = 0; i < pResult->points.size(); i++){
+                float x = pResult->points[i].x;
+                float y = pResult->points[i].y;
+                strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fX = x;
+                strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fY = y;
+                strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fX = x;
+                strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fY = y; 
+                LOG_RAW("   最后结果点数 = %d, i = %d, x = %f, y = %f\n", pResult->points.size(), i, x, y);
+
+                pcl::PointXYZRGB tempRGB;
+                tempRGB.x = x;
+                tempRGB.y = y;
+                tempRGB.z = 0;
+                tempRGB.r = 255;
+                tempRGB.g = 255;
+                tempRGB.b = 255;
+                m_pAll_output_curve_cloud->points.push_back(tempRGB);
+
+            }
+            
+        }
+    
+    }
+#endif
+
+//左侧滑窗滤波版本
+#if 1
+    if( m_stLCDConfig.isDetectionLeftRoad &&
+        m_stLCDConfig.isRunningFilter && 
+        !vCrudeExtractTwoEdgeCloudPtrList[1]->points.empty())     
+    {     
+        pResult->points.clear();
+
+        //计算簇的平均x坐标
+        double x_sum = 0;
+        double x_left_avg = 0;
+        for (const auto& point : vCrudeExtractTwoEdgeCloudPtrList[1]->points) {
+            x_sum += point.x;
+        }
+        x_left_avg = x_sum / vCrudeExtractTwoEdgeCloudPtrList[1]->size();
+        
+        LOG_RAW("***道路左侧输入的点数: %d , 平均x: %f\n", vCrudeExtractTwoEdgeCloudPtrList[1]->points.size(), x_left_avg);
+        left_flag = IsClustering_hough(vCrudeExtractTwoEdgeCloudPtrList[1], clusters_ptr_left, ullTime, 1);
+        // left_flag = IsClustering(fLeftPointsDistance, fLeftMaxClusterThreshold, fLeftMinClusterThreshold, vCrudeExtractTwoEdgeCloudPtrList[1], clusters_ptr_left);
+        // left_flag = IsClustering(1, 200, 10, vCrudeExtractTwoEdgeCloudPtrList[1], clusters_indices_left);
+        
+        // //if(left_flag)
+        // //    vClusterIndices.insert(vClusterIndices.end(),cluster_indices_left.begin(),cluster_indices_left.end());
+        
+        if(left_flag){
+
+            if(clusters_ptr_left.size() >= 2){
+                // pLastestLeftCluster = getLargestCluster(clusters_ptr_left);
+                pLastestLeftCluster = getCloserLeftCluster(clusters_ptr_left);
+                // vClusters.push_back(pLastestLeftCluster);
+                LOG_RAW("左侧大于2个簇, 点云数量： %d\n", pLastestLeftCluster->points.size());
+            }
+            else{
+                pLastestLeftCluster = getCluster(clusters_ptr_left);
+                // vClusters.push_back(pLastestLeftCluster);
+                LOG_RAW("左侧只有1个簇, 点云数量： %d\n", pLastestLeftCluster->points.size());
             }
 
            
             //曲线拟合计算
             pResult = m_pCurveFitting->CurveFittingStart(pLastestLeftCluster,ullTime,1);
-            if(!pResult->points.empty()){
-                file_left<<ullTime<<","<<pResult->points[0].x<<","<<pResult->points[0].y<<","<<pResult->points[1].x<<","<<pResult->points[1].y<<endl;
-                file_left.close();
-                iRightId = 1;  
-                strCurbs.iCounts += 1;
-                strCurbs.pstrCVLane[0].byType = 1;
-                for(int i = 0; i < pResult->points.size(); i++){
-                    float x = pResult->points[i].x;
-                    float y = pResult->points[i].y;
-                    strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fX = x;
-                    strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fY = y;
-                    strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fX = x;
-                    strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fY = y; 
-                    printf("   最后结果点数 = %d, i = %d, x = %f, y = %f \n",pResult->points.size(), i, x, y);
 
-                    pcl::PointXYZRGB tempRGB;
-                    tempRGB.x = x;
-                    tempRGB.y = y;
-                    tempRGB.z = 0;
-                    tempRGB.r = 255;
-                    tempRGB.g = 255;
-                    tempRGB.b = 255;
-                    m_pAll_output_curve_cloud->points.push_back(tempRGB);
+            left_line_running_info.runningValue = m_iSystemRunCount;
+            left_line_running_info.existFlag = true;
+            left_line_running_info.linePointCloud = pResult;
+            m_qLeftLineInfo.push(left_line_running_info);
+        }    
+        else{
+           
+            left_line_running_info.runningValue = m_iSystemRunCount;
+            left_line_running_info.existFlag = false;
+            PointCloud2Intensity::Ptr pInvalidPointCloud(new PointCloud2Intensity());
+            pcl::PointXYZI invaliData;
+            invaliData.x = 0;
+            invaliData.y = 0;
+            invaliData.z = 0;
+            invaliData.intensity = 125;
+            pInvalidPointCloud->points.push_back(invaliData);
+            left_line_running_info.linePointCloud = pInvalidPointCloud;    
+            m_qLeftLineInfo.push(left_line_running_info);
+           
+        }  
+    
+        //滑窗操作
+        if(fmod(m_iSystemRunCount, m_stLCDConfig.slideWindowCount) == 0){
+            pResult = SlideWindowProcess(m_qLeftLineInfo);
+            // std::cout<<"滑窗结束后个数： "<<m_qLeftLineInfo.size()<<std::endl;
 
-                }
+            strCurbs.iCounts += 1;
+            strCurbs.pstrCVLane[0].byType = 1;
+            for(int i = 0; i < pResult->points.size(); i++){
+                float x = pResult->points[i].x;
+                float y = pResult->points[i].y;
+                strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fX = x;
+                strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fY = y;
+                strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fX = x;
+                strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fY = y; 
+
+                LOG_RAW("   滑窗操作最后结果点数 = %d, i = %d, x = %f, y = %f \n", pResult->points.size(), i, x, y);
+
+                pcl::PointXYZRGB tempRGB;
+                tempRGB.x = x;
+                tempRGB.y = y;
+                tempRGB.z = 0;
+                tempRGB.r = 255;
+                tempRGB.g = 255;
+                tempRGB.b = 255;
+                m_pAll_output_curve_cloud->points.push_back(tempRGB);
+
             }
+        
+        
+            file_left<<ullTime<<","<<pResult->points[0].x<<","<<pResult->points[0].y<<","<<pResult->points[1].x<<","<<pResult->points[1].y<<endl;
+            file_left.close();
+
+            byAlgNum++;
+            int iRet = CameraLaneMCServerSend((unsigned char *)&strCurbs, sizeof(STR_CV_LANE_DATA));
+
+            //点云转图像
+            if(bProjectionModel){
+                m_pViewer->ProjectPointCloud(pAfterVoxelGrid, pNoGroudPoints, m_pAll_deal_cluster_cloud, m_pAll_output_curve_cloud);
+                // m_pViewer->Display();
+                if(bSavePictureModel)
+                    m_pViewer->SaveImage(ullTime);
+            }    
         }
     }
+
 #endif
 
-    byAlgNum++;
-    int iRet = CameraLaneMCServerSend((unsigned char *)&strCurbs, sizeof(STR_CV_LANE_DATA));
+    if(!m_stLCDConfig.isRunningFilter){
+        byAlgNum++;
+        int iRet = CameraLaneMCServerSend((unsigned char *)&strCurbs, sizeof(STR_CV_LANE_DATA));
 
-    //点云转图像
-    if(bProjection){
-        m_pViewer->ProjectPointCloud(pAfterVoxelGrid, pNoGroudPoints, m_pAll_deal_cluster_cloud, m_pAll_output_curve_cloud);
-        // m_pViewer->Display();
-        if(bSavePicture)
-            m_pViewer->SaveImage(ullTime);
-    }    
+        //点云转图像
+        if(bProjectionModel){
+            m_pViewer->ProjectPointCloud(pAfterVoxelGrid, pNoGroudPoints, m_pAll_deal_cluster_cloud, m_pAll_output_curve_cloud);
+            // m_pViewer->Display();
+            if(bSavePictureModel)
+                m_pViewer->SaveImage(ullTime);
+        }    
+    }
     
     
 
@@ -2020,12 +2199,85 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
 }
 
 
+PointCloud2Intensity::Ptr LidarCurbDectection::SlideWindowProcess(std::queue<LineRunningInfo> &qFinalClusterInfo){
+    
+    std::queue<LineRunningInfo> tempQueue = qFinalClusterInfo;
+    // std::cout<<"qFinalClusterInfo的长度: "<<qFinalClusterInfo.size()<<std::endl;
+    PointCloud2Intensity::Ptr pOutput(new PointCloud2Intensity());
+    cv::Point2f point_front_sum, point_back_sum;
+    int validDataCount = 0;
+    // std::cout<<"当簇为0时: 3"<<std::endl;
+    for(int i = 0; i < m_stLCDConfig.slideWindowCount; i++){
 
+        LineRunningInfo tempLineInfo = tempQueue.front();
+        tempQueue.pop();
+        // std::cout<<"tempQueue.pop完的长度: "<<tempQueue.size()<<std::endl;
+        if(tempLineInfo.existFlag){
+            
+            validDataCount++;
+           
+            for(int j = 0; j < tempLineInfo.linePointCloud->points.size(); ++j){
+                if(j == 0){
+                    point_front_sum.x += tempLineInfo.linePointCloud->points[j].x;
+                    point_front_sum.y += tempLineInfo.linePointCloud->points[j].y;
+                    // std::cout<<"y=0时: x = "<<tempLineInfo.linePointCloud->points[j].x<<" , y = "<<tempLineInfo.linePointCloud->points[j].y<<std::endl;
+                }
+                else{
+                    point_back_sum.x += tempLineInfo.linePointCloud->points[j].x;
+                    point_back_sum.y += tempLineInfo.linePointCloud->points[j].y;
+                    // std::cout<<"y=3时: x = "<<tempLineInfo.linePointCloud->points[j].x<<" , y = "<<tempLineInfo.linePointCloud->points[j].y<<std::endl;
+                }
+            }
+        
+        }
+    }
+
+    //  std::cout<<"有效值个数: "<<validDataCount<<std::endl;
+
+    pcl::PointXYZI front, back;
+    if(validDataCount == 0){
+        front.x = 0;
+        front.y = 0;
+        front.z = 0;        //z轴先写死为0
+        front.intensity = 255;
+        pOutput->points.push_back(front);
+
+        back.x = 0;
+        back.y = 0;
+        back.z = 0;        //z轴先写死为0
+        back.intensity = 255;
+        pOutput->points.push_back(back);
+    }    
+    else{
+        
+        front.x = point_front_sum.x / validDataCount;
+        front.y = point_front_sum.y / validDataCount;
+        front.z = 0;        //z轴先写死为0
+        front.intensity = 255;
+        pOutput->points.push_back(front);
+        // std::cout<<"y=0时: x = "<<front.x<<" , y = "<<front.y<<std::endl;
+
+        back.x = point_back_sum.x / validDataCount;
+        back.y = point_back_sum.y / validDataCount;
+        back.z = 0;        //z轴先写死为0
+        back.intensity = 255;
+        pOutput->points.push_back(back);
+        // std::cout<<"y=3时: x = "<<back.x<<" , y = "<<back.y<<std::endl;
+    }
+    
+    int initQueueCount = qFinalClusterInfo.size();
+    for(int i = initQueueCount; i > 1; i--)
+        qFinalClusterInfo.pop();
+    
+    return pOutput;
+}
 
 
 
 void LidarCurbDectection::GroudSegmentationStart(PointCloud2Intensity::Ptr pInCloud, unsigned long long ullTime)
 {
+    m_iSystemRunCount++;
+
     m_vCloudPtrList.resize(2);  //2
     for(int i = 0; i < m_vCloudPtrList.size(); i++){
         m_vCloudPtrList[i].reset(new PointCloud2Intensity);

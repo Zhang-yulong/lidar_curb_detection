@@ -4,9 +4,13 @@
 #include "LeiShenDrive.h"
 
 #include "ulog_api.h"
-#define LOG_CFG_FILE_PATH "/home/zyl/echiev_lidar_curb_detection/config/ulog.cfg"
 
-std::string Yaml_Path = "/home/zyl/echiev_lidar_curb_detection/config/debug_config.yaml";
+#define CvLane_MC_PORT 9139
+
+#define LOG_CFG_FILE_PATH "/etc/ulog/curb/config/ulog.cfg"
+
+
+std::string Yaml_Path = "/etc/echiev/bin/debug_config.yaml";
 
 // #include "ConnectTools.h"
 // using namespace pcl::visualization;
@@ -77,7 +81,7 @@ void fusionLoc_set(unsigned char *pData, int Len)
 
 int Comm_Init(void)
 {
-	const char *strConfigPath_ToMainLidar = "/home/zyl/echiev_lidar_curb_detection/小车11上的雷达配置文件/lsCH64w_front/lidar.cfg";
+	const char *strConfigPath_ToMainLidar = "/etc/echiev/lidar/lsCH64w_front/lidar.cfg";
 	if(NULL == strLidarConfig_ToMainLidar)
 	{
 		printf("strLidarConfig_ToMainLidar malloc error\n");
@@ -94,7 +98,7 @@ int Comm_Init(void)
 	}
 
 
-	const char *strConfigPath_ToCar = "/home/zyl/echiev_lidar_curb_detection/小车11上的雷达配置文件/lidar.cfg";
+	const char *strConfigPath_ToCar = "/etc/echiev/lidar/lidar.cfg";
 	if(NULL == strLidarConfig_ToCar)
 	{
 		printf("strConfigPath_ToCar malloc error\n");
@@ -147,6 +151,7 @@ int Comm_Init(void)
 		{printf("OpenfusionLocMCClient successful.\n");}
 	fusionLoc_set_callback(fusionLoc_set);
 
+
 	if(OpenCameraLaneMCServer(CvLane_MC_PORT, CvLane_MC_INTERVAL, 0X01) < 0) 
 	{
 		printf("OpenCameraLaneMCServer fail.\n");
@@ -191,7 +196,7 @@ int main()
 	Config stOpencvConfig;
 	YamlReader *pYamlReader = new YamlReader(Yaml_Path);
     if (!pYamlReader->LoadConfig(stOpencvConfig)) {
-		printf("debug.yaml加载失败\n");
+		LOG_RAW("debug.yaml加载失败\n");
         return -1; // 如果加载失败，则退出
     }
 

@@ -270,8 +270,8 @@ double CurveFitting::pointToLineDistance(const cv::Point& point, const LinePolar
 }
 
 PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pInCloud, float yMin, float yMax, unsigned long long ullTime){
-    
-    std::cout<<"进入Ransac计算"<<std::endl;
+
+    LOG_RAW("进入Curve计算 \n");
     PointCloud2RGB::Ptr curve(new PointCloud2RGB());
 
     int n = pInCloud->points.size();
@@ -359,7 +359,8 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
     double b = mean_y - k * mean_x;    // 截距
     
     Vector2d temp2d(k,b);
-    std::cout<<"进入之前k,b: (" <<k<<" , "<<b<<")"<<std::endl;
+//    std::cout<<"进入之前k,b: (" <<k<<" , "<<b<<")"<<std::endl;
+    LOG_RAW("输出(k: %f , b: %f)\n", k, b);
 
     // m_pKF->setTimeStep(0.2); //时间步长先设定为0.2s
     // m_pKF->predict();
@@ -368,7 +369,7 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
     // Vector4d final_state= m_pKF->getState();
     // std::cout<<"kf结束后k,b: (" <<final_state[0]<<" , "<<final_state[1]<<")"<<std::endl;
     
-    for(double y = 0; y <= 5; y += 0.01)
+    for(double y = 0; y <= 3; y += 0.01)
     // for(double y = min_y; y <= max_y; y += 0.01)
     {
         double x = (y-b) / k;  //原来正常的
@@ -610,9 +611,7 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
 PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::Ptr pInCloud, unsigned long long ullTime, int iSideFlag )
 {
    
-    // std::ofstream file_right("/home/zyl/echiev_lidar_curb_detection/log/right_side_points.csv", ios::app);
-    // std::ofstream file_left("/home/zyl/echiev_lidar_curb_detection/log/left_side_points.csv", ios::app);
-
+    
     // 用于可视化的聚类点云
     PointCloud2RGB::Ptr colored_cloud(new PointCloud2RGB());
 
@@ -658,7 +657,7 @@ PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::
             temp.x = pCurveRGB->points[i].x;
             temp.y = pCurveRGB->points[i].y;
             temp.z = pCurveRGB->points[i].z;
-            temp.intensity = 1;
+            temp.intensity = 255;
             pResultCurve->points.push_back(temp);
             // std::cout<<"第一个点("<<temp.x<<","<<temp.y<<")"<<std::endl;
            
@@ -670,7 +669,7 @@ PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::
             temp.x = pCurveRGB->points[i].x;
             temp.y = pCurveRGB->points[i].y;
             temp.z = pCurveRGB->points[i].z;
-            temp.intensity = 1;
+            temp.intensity = 255;
             pResultCurve->points.push_back(temp);
             // std::cout<<"最后一个点("<<temp.x<<","<<temp.y<<")"<<std::endl;
            
@@ -685,9 +684,6 @@ PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::
        
         
     }
-
-    // file_right.close();
-    // file_left.close();
 
 
    return pResultCurve;
