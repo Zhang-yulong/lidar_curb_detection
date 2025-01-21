@@ -9,7 +9,10 @@
 #include "kalman.h"
 #include "ulog_api.h"
 
-class LineKalmanFilter;
+namespace Lidar_Curb_Dedection
+{
+    
+// class LineKalmanFilter;
 
 // 极坐标直线
 struct LinePolar {
@@ -27,14 +30,12 @@ class CurveFitting
 {
 
 public:
-    CurveFitting(const float fDistinguishRoadSideThreshold);
-    CurveFitting(Config & config);
+   
+    CurveFitting(const STR_CONFIG & config);
 
     ~CurveFitting();
 
-
     PointCloud2Intensity::Ptr CurveFittingStart(PointCloud2Intensity::Ptr pInCloud, unsigned long long ullTime, int iSideFlag);
-
 
 private:
    
@@ -62,12 +63,12 @@ private:
     float m_fDistinguishRoadSideThreshold; //用于区分左右簇
     
     
-    Config m_stCFConfig;
+    STR_CONFIG m_stCFConfig;
     LineKalmanFilter *m_pKF;
 };
 
 
 
-
+}
 
 #endif

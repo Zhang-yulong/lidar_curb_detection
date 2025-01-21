@@ -1,8 +1,10 @@
 #include "LidarCurbDectection.h" 
+#include <memory>
+
+namespace Lidar_Curb_Dedection
+{
 
 
-
-// std::shared_ptr<pcl::visualization::PCLVisualizer> plane_viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
 // pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("Euclidean Clustering"));
 // extern pcl::visualization::PCLVisualizer::Ptr CurveViewer;
 
@@ -189,59 +191,54 @@ PointCloud2Intensity::Ptr LidarCurbDectection::getCloserLeftCluster(const std::v
 
 
 
-
-/*没有配置文件调参的构造函数*/
-LidarCurbDectection::LidarCurbDectection(const float fGroudSegmentationThreshold, const float fLidarVerticalLowerAngle, const float fLidarVerticalUpperAngle,
-                                        const int iLidarScanRings)
-    : m_fGroudSegmentationThreshold(fGroudSegmentationThreshold), m_fLowerBound(fLidarVerticalLowerAngle), m_fUpperBound(fLidarVerticalUpperAngle),
-      m_iScanRings(iLidarScanRings)
-{
-    m_fFactor = (m_fUpperBound - m_fLowerBound)/ (m_iScanRings - 1);
-
-    float distinguishRoadSideThreshold = 0.0;
-    m_pCurveFitting = new CurveFitting(distinguishRoadSideThreshold);
-
-
-    int width = 1000;
-    int height = 1200;
-    double scale = 100.0;                       //1米对应100像素
-    cv::Point2d offset(100, height / 2.0);      // 偏移到图像左侧100像素处的中心   
-    m_pViewer = new Viewer(width, height, scale, offset);       
-
-    m_pAll_deal_cluster_cloud = boost::make_shared<PointCloud2RGB>();
-    m_pAll_output_curve_cloud = boost::make_shared<PointCloud2RGB>();
-
-    // m_pGroundPoints = boost::make_shared<PointCloud2Intensity>();
-    // m_pNoGroundPoints = boost::make_shared<PointCloud2Intensity>();
-
-    // plane_viewer = boost::make_shared<    pcl::visualization::PCLVisualizer>("3D Viewer");
-}
-
-
 /*使用配置文件调参的构造函数*/
-LidarCurbDectection::LidarCurbDectection(Config & config)
-    : m_stLCDConfig(config)
+LidarCurbDectection::LidarCurbDectection(const STR_CONFIG & config)
+    : m_strLCDConfig(config)
 {
-    m_fUpperBound = m_stLCDConfig.verticalUpperAngle;
-    m_fLowerBound = m_stLCDConfig.verticalLowerAngle;
-    m_fGroudSegmentationThreshold = m_stLCDConfig.groudSegmentationThreshold;
-    m_iScanRings = m_stLCDConfig.scanRings;
+    m_fUpperBound = m_strLCDConfig.verticalUpperAngle;
+    m_fLowerBound = m_strLCDConfig.verticalLowerAngle;
+    m_fGroudSegmentationThreshold = m_strLCDConfig.groudSegmentationThreshold;
+    m_iScanRings = m_strLCDConfig.scanRings;
     m_fFactor = (m_fUpperBound - m_fLowerBound)/ (m_iScanRings - 1);
 
 
-    int viewer_width = m_stLCDConfig.viewer_width;
-    int viewer_height = m_stLCDConfig.viewer_height;
-    float viewer_scale = m_stLCDConfig.viewer_scale;
-    cv::Point2d viewer_offset(m_stLCDConfig.viewer_offsetX, m_stLCDConfig.viewer_offsetY);
+    // int viewer_width = m_strLCDConfig.viewer_width;
+    // int viewer_height = m_strLCDConfig.viewer_height;
+    // float viewer_scale = m_strLCDConfig.viewer_scale;
+    // cv::Point2d viewer_offset(m_strLCDConfig.viewer_offsetX, m_strLCDConfig.viewer_offsetY);
 
+    if(m_strLCDConfig.openGroudViewer){
+        ground_viewer = std::make_shared<pcl::visualization::PCLVisualizer> ("groud Viewer");
+        no_ground_viewer = std::make_shared<pcl::visualization::PCLVisualizer> ("no groud Viewer");
+    }
 
-    m_pCurveFitting = new CurveFitting(m_stLCDConfig);
-    m_pViewer = new Viewer(viewer_width, viewer_height, viewer_scale, viewer_offset); 
+    if(m_strLCDConfig.openClusterViewer){
+        cluster_viewer = std::make_shared<pcl::visualization::PCLVisualizer> ("cluster Viewer");
+    }
+
+    m_pCurveFitting = new CurveFitting(m_strLCDConfig);
+    // m_pViewer = new Viewer(viewer_width, viewer_height, viewer_scale, viewer_offset); 
+    m_pViewer = new Viewer(m_strLCDConfig);
 
     m_pAll_deal_cluster_cloud = boost::make_shared<PointCloud2RGB>();
     m_pAll_output_curve_cloud = boost::make_shared<PointCloud2RGB>();
 
     m_iSystemRunCount = 0;
+
+
+    R_ToLeftProject <<  0, -m_strLCDConfig.hough_scale, m_strLCDConfig.hough_offsetX,
+                        m_strLCDConfig.hough_scale, 0, m_strLCDConfig.hough_left_offsetY,
+                        0, 0, 1;
+
+    R_ToRightProject << 0, -m_strLCDConfig.hough_scale, m_strLCDConfig.hough_offsetX,
+                        m_strLCDConfig.hough_scale, 0, m_strLCDConfig.hough_right_offsetY,
+                        0, 0, 1;
+
+    R_Inv_ToLeftProject = R_ToLeftProject.inverse();
+    R_Inv_ToRightProject = R_ToRightProject.inverse();
+
+    std::cout<<"R_Inv_ToLeftProject = "<<"\n"<< R_Inv_ToLeftProject <<std::endl;
+    std::cout<<"R_Inv_ToRightProject = "<<"\n"<< R_Inv_ToRightProject <<std::endl;
 }
 
 
@@ -249,7 +246,8 @@ LidarCurbDectection::LidarCurbDectection(Config & config)
 
 LidarCurbDectection::~LidarCurbDectection()
 {
-    
+    delete(m_pViewer);
+    delete(m_pCurveFitting);
 }
 
 
@@ -291,11 +289,10 @@ void LidarCurbDectection::CalculateScanID(PointCloud2Intensity::Ptr pInCloud, Po
 
 void LidarCurbDectection::ExtractPointsByHeightDifference(PointCloud2Intensity::Ptr &pInCloud)
 {
-    float fHeightLower = m_stLCDConfig.heightLower;
-    float fHeightUpper = m_stLCDConfig.heightUpper;
+    float fHeightLower = m_strLCDConfig.heightLower;
+    float fHeightUpper = m_strLCDConfig.heightUpper;
 
     // std::cout<<"进高度差函数的点数: "<<pInCloud->points.size()<<std::endl;
-
 
     PointCloud2Intensity::Ptr temp(new PointCloud2Intensity);
     int count = 0;
@@ -314,8 +311,9 @@ void LidarCurbDectection::ExtractPointsByHeightDifference(PointCloud2Intensity::
     }
 
     *pInCloud = *temp;
-    
+
     LOG_RAW("高度差筛选后，剩下的点： %d\n",temp->points.size());
+
 }
 
 
@@ -381,12 +379,12 @@ void LidarCurbDectection::GroudFilterFromSAC(PointCloud2Intensity::Ptr &pGroundP
 //使用渐进式形态学滤波分割地面
 void LidarCurbDectection::GroudFilterFromAPMF(PointCloud2Intensity::Ptr &pGroundPoints, PointCloud2Intensity::Ptr &pNoGroundPoints){
     
-    int iMaxWindowSize = m_stLCDConfig.maxWindowSize;
-    float fSlope = m_stLCDConfig.slope;
-    float fInitialDistance = m_stLCDConfig.initialDistance;
-    float fMaxDistance = m_stLCDConfig.maxDistance;
-    int iCellSize = m_stLCDConfig.cellSize;
-    int iBase = m_stLCDConfig.base;
+    int iMaxWindowSize = m_strLCDConfig.maxWindowSize;
+    float fSlope = m_strLCDConfig.slope;
+    float fInitialDistance = m_strLCDConfig.initialDistance;
+    float fMaxDistance = m_strLCDConfig.maxDistance;
+    int iCellSize = m_strLCDConfig.cellSize;
+    int iBase = m_strLCDConfig.base;
 
 
     for(int i = 0; i < m_vCloudPtrList.size(); i++)
@@ -395,7 +393,6 @@ void LidarCurbDectection::GroudFilterFromAPMF(PointCloud2Intensity::Ptr &pGround
         PointCloud2Intensity::Ptr pGround_no_i(new PointCloud2Intensity);
         
         pcl::PointIndicesPtr pInliers(new pcl::PointIndices);             // 存储地面点索引
-        // pcl::PointIndices::Ptr pInliers(new pcl::PointIndices);
 
         // 渐进式形态学滤波
         pcl::ApproximateProgressiveMorphologicalFilter<pcl::PointXYZI> segmentation;
@@ -416,6 +413,26 @@ void LidarCurbDectection::GroudFilterFromAPMF(PointCloud2Intensity::Ptr &pGround
         *pNoGroundPoints += *pGround_no_i;
     
     }
+
+    if(m_strLCDConfig.pcdRunningModel){
+
+        pGroundPoints->height = pGroundPoints->points.size();
+        pGroundPoints->width = 1;
+        pGroundPoints->is_dense = false;
+        char pchFileName_1[128];
+        bzero(pchFileName_1, sizeof (pchFileName_1));
+        sprintf(pchFileName_1, "/home/zyl/echiev_lidar_curb_detection/log/pcdRunningModel/Ground.pcd");
+        pcl::io::savePCDFileASCII (pchFileName_1, *pGroundPoints);
+
+        pNoGroundPoints->height = pNoGroundPoints->points.size();
+        pNoGroundPoints->width = 1;
+        pNoGroundPoints->is_dense = false;
+        char pchFileName_2[128];
+        bzero(pchFileName_2, sizeof (pchFileName_2));
+        sprintf(pchFileName_2, "/home/zyl/echiev_lidar_curb_detection/log/pcdRunningModel/noGround.pcd");
+        pcl::io::savePCDFileASCII (pchFileName_2, *pNoGroundPoints);
+    }
+
 }
 
 
@@ -683,7 +700,7 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
         angle = std::abs(angle); // 只关心绝对值 [-180,180]
 
         //剔除与水平夹角小于60度的线
-        if(angle < 60){
+        if(angle < 40){
             // std::cout <<" 该簇估计方向小于60度 , 实际角度： "<<angle<<std::endl;
             
             cv::drawContours(image, InitContours, static_cast<int>(i), cv::Scalar(0,0,255), -1); //应该是红色
@@ -720,10 +737,10 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
 
         length =  maxY - minY;
         //剔除直线
-        if(length <= 75) {//单位：像素，应该与缩放大小有关 1米5以下就踢掉
-            // std::cout<<"轮廓区域长度: "<<length<<std::endl;
-            continue;
-        }
+        // if(length <= 75) {//单位：像素，应该与缩放大小有关 1米5以下就踢掉
+        //     // std::cout<<"轮廓区域长度: "<<length<<std::endl;
+        //     continue;
+        // }
         cv::drawContours(image, InitContours, static_cast<int>(i), cv::Scalar(0,255,0), -1); //应该是绿色
        
         LOG_RAW("轮廓点数: %d, 轮廓方向: %f, 轮廓长度:%f\n", InitContours[i].size(), angle, length);
@@ -950,46 +967,166 @@ void LidarCurbDectection::findOnlyFitCluster(std::vector<std::vector<cv::Point>>
 }
 #endif
 
+
+
+double LidarCurbDectection::calculateSlope(const cv::Vec4i& line) {
+    double dx = line[2] - line[0];
+    double dy = line[3] - line[1];
+    return (dx == 0) ? std::numeric_limits<double>::infinity() : dy / dx;
+}
+
+double LidarCurbDectection::calculateIntercept(const cv::Vec4i& line, double slope) {
+    return line[1] - slope * line[0];
+}
+
+// 聚类直线段
+std::vector<std::vector<HoughSPLineInfo>> LidarCurbDectection::clusterLines(const std::vector<HoughSPLineInfo>& lines, double slope_threshold, double distance_threshold) {
+    std::vector<std::vector<HoughSPLineInfo>> clusters;
+
+    for (const auto& line : lines) {
+        bool added = false;
+        for (auto& cluster : clusters) {
+            if (std::abs(line.slope - cluster[0].slope) < slope_threshold) {
+                cluster.push_back(line);
+                added = true;
+                break;
+            }
+        }
+        if (!added) {
+            clusters.push_back({line});
+        }
+    }
+
+    return clusters;
+}
+
+// 拟合一条新的直线
+cv::Vec4f LidarCurbDectection::fitLineToCluster(const std::vector<HoughSPLineInfo>& cluster) {
+    std::vector<cv::Point2f> points;
+    for (const auto& line : cluster) {
+        points.emplace_back(line.line[0], line.line[1]);
+        points.emplace_back(line.line[2], line.line[3]);
+
+    }
+
+    cv::Vec4f fitted_line;
+    cv::fitLine(points, fitted_line, CV_DIST_L2, 0, 0.01, 0.01);
+    return fitted_line;
+}
+
+// 聚类直线（仅考虑斜率）
+std::vector<std::vector<Line>> LidarCurbDectection::clusterLinesBySlope(const std::vector<Line>& lines, float slope_threshold) {
+    std::vector<std::vector<Line>> clusters;
+
+    for (const auto& line : lines) {
+        if(line.angle < 60){
+        
+            continue;
+        }
+            
+        bool found_cluster = false;
+
+        // 尝试加入现有簇
+        for (auto& cluster : clusters) {
+            
+            // // std::cout<<"角度: "<<line.angle<<std::endl;
+            // if (std::abs(cluster.front().angle - line.angle) < slope_threshold) {
+            //     cluster.push_back(line);
+            //     found_cluster = true;
+            //     break;
+            // }
+
+            const Line& cluster_line = cluster.front();
+
+            // 计算当前直线和簇内第一个直线的角度差异
+            if (std::abs(cluster_line.angle - line.angle) < slope_threshold) {
+                // 检查当前直线的中点横坐标与簇内第一个直线的中点横坐标的差异
+                float cluster_x_midpoint = (cluster_line.start.x + cluster_line.end.x) / 2.0f;
+                float line_x_midpoint = (line.start.x + line.end.x) / 2.0f;
+
+                if (std::abs(cluster_x_midpoint - line_x_midpoint) < 10) {
+                    // 如果符合条件，将当前直线加入到该簇中
+                    cluster.push_back(line);
+                    found_cluster = true;
+                    break;
+                }
+            }
+
+        }
+
+        // 如果没有找到匹配的簇，创建一个新簇
+        if (!found_cluster) {
+            clusters.push_back({line});
+        }
+    }
+
+    return clusters;
+}
+
+// 从聚类中找到最长的簇
+std::vector<Line> LidarCurbDectection::findLongestCluster(const std::vector<std::vector<Line>>& clusters) {
+    std::vector<Line> longest_cluster;
+    float max_length = 0.0;
+
+    for (const auto& cluster : clusters) {
+        float cluster_length = std::accumulate(cluster.begin(), cluster.end(), 0.0f,
+                                               [](float sum, const Line& line) { return sum + line.length; });
+        if (cluster_length > max_length) {
+            max_length = cluster_length;
+            longest_cluster = cluster;
+        }
+    }
+
+    return longest_cluster;
+}
+
+// 计算两点之间的欧几里得距离，即线段的长度
+float LidarCurbDectection::calculateLength(const cv::Point& start, const cv::Point& end) {
+    return std::sqrt(std::pow(end.x - start.x, 2) + std::pow(end.y - start.y, 2));
+}
+
 //修改
-#if 0
+#if 1
 // //调用聚类方法, 输出 ptr , 用来加入霍夫变换或直线分割
 bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputCloud, std::vector<PointCloud2Intensity::Ptr> &vClusterPtr, unsigned long long ullTime, int iSideFlag)
 {
     cv::Point2d offset;    
     if(iSideFlag == 0){ //右
-        offset.x = m_stLCDConfig.hough_offsetX;
-        offset.y = m_stLCDConfig.hough_right_offsetY;
+        offset.x = m_strLCDConfig.hough_offsetX;
+        offset.y = m_strLCDConfig.hough_right_offsetY;
     }
     else{               //左
-        offset.x = m_stLCDConfig.hough_offsetX;
-        offset.y = m_stLCDConfig.hough_left_offsetY;
+        offset.x = m_strLCDConfig.hough_offsetX;
+        offset.y = m_strLCDConfig.hough_left_offsetY;
     }
 
 
-    int iWidth = m_stLCDConfig.hough_width;
-    int iHeight = m_stLCDConfig.hough_height;
-    double dScale = m_stLCDConfig.hough_scale; //50个像素表示1米
+    int iWidth = m_strLCDConfig.hough_width;
+    int iHeight = m_strLCDConfig.hough_height;
+    double dScale = m_strLCDConfig.hough_scale; //默认是50个像素表示1米
     
     cv::Mat temp_image = cv::Mat::zeros(iHeight, iWidth, CV_8UC1); //单通道黑色
-    
+    cv::Mat result = cv::Mat::zeros(temp_image.size(), CV_8UC3);
+
     //把3d点压缩成2d点
     // 遍历原始点云
     for (const auto& pt : pInputCloud->points) {
        
+        // 图像坐标 u 轴向右 为正（与点云x轴相同）（列），图像坐标 v 轴向下为正（与点云y轴相反）（行）。
         // // 投影时将3D点的x和y坐标互换，并应用比例缩放和偏移
         int x = static_cast<int>(-pt.y * dScale + offset.x);
         int y = static_cast<int>(pt.x * dScale + offset.y);
 
         // 检查是否在图像边界内
         if (x >= 0 && x < iWidth && y >= 0 && y < iHeight){
-            temp_image.at<uchar>(x,y) = 255;    //将点设置为白色， 
+            temp_image.at<uchar>(x,y) = 255;    //将点设置为白色
         }
     }
 
     auto start = std::chrono::high_resolution_clock::now();
 
 /**/ // // 进行膨胀操作连接断点  
-    int dilationSize = 2; // 膨胀核大小
+    int dilationSize = 1; // 膨胀核大小
     //cv::MORPH_RECT 函数返回矩形卷积核（形状），MORPH_ELLIPSE（椭圆核）；Size：卷积核大小； Point：表示卷积核有x行，y列
     //3*3：最小有效核； 5*5更平滑的连接效果
     cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE,
@@ -997,112 +1134,124 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
                                                 cv::Point(dilationSize, dilationSize));
     cv::dilate(temp_image, temp_image, element);  //膨胀
     
-/*单纯进行轮廓检测*/
-    // 检查图像是否是二值图
-    // cv::threshold(temp_image, temp_image, 127, 255, cv::THRESH_BINARY);  //大于第三个值的点重新设置为255
-    
-    std::vector<std::vector<cv::Point>> contours;
-    std::vector<std::vector<cv::Point>> mergedContours;
-    //使用 findContours 替代( connectedComponents : opencv 3以上)
-    cv::findContours(temp_image, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE); //cv::RETR_EXTERNAL：只检测最外层轮廓
-    
-    cv::Mat result = cv::Mat::zeros(temp_image.size(), CV_8UC3);
-    for (size_t i = 0; i < contours.size(); i++) {
-        cv::drawContours(result, contours, static_cast<int>(i), cv::Scalar(255,255,255), 3);
+
+    // 使用 HoughLinesP 检测直线段
+    std::vector<cv::Vec4i> lines_p;
+    cv::HoughLinesP(temp_image, lines_p, 1, CV_PI / 180, 50, 37, 20);
+
+    std::vector<Line> lines;
+    for (int i = 0; i < lines_p.size(); i++){
+        cv::Point start(lines_p[i][0], lines_p[i][1]);
+        cv::Point end(lines_p[i][2], lines_p[i][3]);
+
+        // 计算当前直线段的长度
+        float length = calculateLength(start, end);
+
+        if(length >= m_strLCDConfig.hough_scale){
+             cv::Scalar random_color(rand() % 256, rand() % 256, rand() % 256);
+             cv::line(result, start, end, random_color, 3);
+            lines.emplace_back(lines_p[i]);
+        }    
     }
 
-    //// 正常
-    // findOnlyFitCluster(contours, result);
+    // 聚类直线（仅考虑斜率）
+    float slope_threshold = 2; // 斜率差异阈值
+    auto clusters = clusterLinesBySlope(lines, slope_threshold);
 
-    ////修改
-    if(iSideFlag == 0)  //右
-        findOnlyFitCluster(contours, result, 0);
-    else
-        findOnlyFitCluster(contours, result, 1);
-    
-    std::vector<std::vector<cv::Point>> cv_clusters;// 存储簇的容器
-    std::cout<<"轮廓数： "<<contours.size()<<std::endl;
-    for (int i = 0; i< contours.size(); i++) {
-          
-        if(contours[i].size() < 25) {
-            // std::cout<<" 剔除区域点数少与30,点数 "<<contours[i].size()<<std::endl;
-            continue; // 忽略太小的轮廓
-        }
-        else {
-            // std::cout<<"   区域点数 "<<contours[i].size()<<std::endl;
-            cv::Mat mask = cv::Mat::zeros(temp_image.size(), CV_8UC1);
-            mergedContours.push_back(contours[i]);
-            // // 在掩码上绘制当前轮廓
-            cv::drawContours(mask, contours, static_cast<int>(i), cv::Scalar(255), -1);
-
-            // 提取轮廓内mergedContours的非零点
-            std::vector<cv::Point> points;
-            cv::findNonZero(mask, points);
-
-
-            // 将提取的点存入簇容器
-            cv_clusters.push_back(points);
-            
-            if(iSideFlag == 0 && !points.empty()) { //右
-
-                PointCloud2Intensity::Ptr pReflectionLidar_right(new PointCloud2Intensity);
-                
-                for(int j = 0; j < points.size(); j++) {
-
-                    pcl::PointXYZI point;
-                    pcl::PointXYZRGB colored_point;
-                    float x0 = 0.02 * points[j].x - 2;      //以后计算完逆矩阵后需要把x和y对调
-                    float y0 = -0.02 * points[j].y + 11;
-                
-                    point.x = x0;
-                    point.y = y0;
-                    point.z = 1;
-                    point.intensity = 0;
-                    pReflectionLidar_right->points.push_back(point);
-                    
-
-                    colored_point.x = x0;
-                    colored_point.y = y0;
-                    colored_point.z = 1;
-                    colored_point.r = 0;
-                    colored_point.g = 255;  //绿色
-                    colored_point.b = 0;
-                    m_pAll_deal_cluster_cloud->points.push_back(colored_point);
-                }
-                vClusterPtr.push_back(pReflectionLidar_right);
-            }
-            else if(iSideFlag == 1 && !points.empty()) {               //左
-
-                PointCloud2Intensity::Ptr pReflectionLidar_left(new PointCloud2Intensity);
-                
-                for(int j = 0; j < points.size(); j++) {
-
-                    pcl::PointXYZI point;
-                    pcl::PointXYZRGB colored_point;
-                    float x1 = 0.02 * points[j].x - 8;
-                    float y1 = -0.02 * points[j].y + 11;
-                
-                    point.x = x1;
-                    point.y = y1;
-                    point.z = 1;
-                    point.intensity = 0;
-                    pReflectionLidar_left->points.push_back(point);
-                    
-                    colored_point.x = x1;
-                    colored_point.y = y1;
-                    colored_point.z = 1;
-                    colored_point.r = 0;
-                    colored_point.g = 255;  //绿色
-                    colored_point.b = 0;
-                    m_pAll_deal_cluster_cloud->points.push_back(colored_point);
-                }
-                vClusterPtr.push_back(pReflectionLidar_left);
-            }
-            
+    // 找到最长的簇
+    std::vector<Line> longest_cluster = findLongestCluster(clusters);
+    std::cout<<"最长的簇 : "<<longest_cluster.size()<<std::endl;
+    std::vector<cv::Point2f> all_longest_cluster_points;
+    if(!longest_cluster.empty()){
+        
+        for (const auto& line : longest_cluster) {
+            cv::line(result, line.start, line.end, cv::Scalar(0, 255, 0), 2);
+            all_longest_cluster_points.push_back(line.start);
+            all_longest_cluster_points.push_back(line.end);
         }
     }
 
+    
+    
+    
+    if(!all_longest_cluster_points.empty()){
+       
+    
+        
+        if(iSideFlag == 0) {     //右
+            PointCloud2Intensity::Ptr pReflectionLidar_right(new PointCloud2Intensity);
+            for (int i = 0; i < all_longest_cluster_points.size(); i++ ) {
+        
 
+                pcl::PointXYZI point;
+                pcl::PointXYZRGB colored_point;
+                
+
+                float x0 = R_Inv_ToRightProject(0,1) * all_longest_cluster_points[i].x + R_Inv_ToRightProject(0,2);
+                float y0 = R_Inv_ToRightProject(1,0) * all_longest_cluster_points[i].y + R_Inv_ToRightProject(1,2);
+
+                point.x = x0;
+                point.y = y0;
+                point.z = 1;
+                point.intensity = 0;
+                pReflectionLidar_right->points.push_back(point);
+                
+
+                colored_point.x = x0;
+                colored_point.y = y0;
+                colored_point.z = 1;
+                colored_point.r = 0;
+                colored_point.g = 255;  //绿色
+                colored_point.b = 0;
+                m_pAll_deal_cluster_cloud->points.push_back(colored_point);
+            }
+            vClusterPtr.push_back(pReflectionLidar_right);
+
+            
+        }
+        else if (iSideFlag == 1){   //左
+            PointCloud2Intensity::Ptr pReflectionLidar_left(new PointCloud2Intensity);
+            for (int i = 0; i < all_longest_cluster_points.size(); i++ ) {
+        
+                pcl::PointXYZI point;
+                pcl::PointXYZRGB colored_point;
+            
+                float x1 = R_Inv_ToLeftProject(0,1) * all_longest_cluster_points[i].x + R_Inv_ToLeftProject(0,2);
+                float y1 = R_Inv_ToLeftProject(1,0) * all_longest_cluster_points[i].y + R_Inv_ToLeftProject(1,2);
+        
+                point.x = x1;
+                point.y = y1;
+                point.z = 1;
+                point.intensity = 0;
+                pReflectionLidar_left->points.push_back(point);
+                
+                colored_point.x = x1;
+                colored_point.y = y1;
+                colored_point.z = 1;
+                colored_point.r = 0;
+                colored_point.g = 255;  //绿色
+                colored_point.b = 0;
+                m_pAll_deal_cluster_cloud->points.push_back(colored_point);
+            }
+            vClusterPtr.push_back(pReflectionLidar_left);
+        }
+
+
+    }
+    std::cout<<"聚类完点云数："<<m_pAll_deal_cluster_cloud->points.size()<<std::endl;
+    
+
+    
+
+    // ////修改
+    // if(iSideFlag == 0)  //右
+    //     findOnlyFitCluster(contours, result, 0);
+    // else
+    //     findOnlyFitCluster(contours, result, 1);
+    
+    // std::vector<std::vector<cv::Point>> cv_clusters;// 存储簇的容器
+    // std::cout<<"轮廓数： "<<contours.size()<<std::endl;
+    
 
     // cv::Mat result = cv::Mat::zeros(temp_image.size(), CV_8UC3);
     // for (size_t i = 0; i < mergedContours.size(); i++) {
@@ -1120,20 +1269,59 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
     //图片下面加注释
     std::string white = "white: All contours";
     std::string blue = "blue: contour less than 25";
-    std::string red = "red: direction less than 80 degrees";
+    std::string red = "red: direction less than 60 degrees";
     std::string green = "green: result";
-    line(result, Point(0, offset.x -10), Point(iWidth, offset.x -10), Scalar(255, 255, 255), 1);  // 白色线
-    putText(result, white, Point(0, offset.x + 10), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    // line(result, Point(0, offset.x -10), Point(iWidth, offset.x -10), Scalar(255, 255, 255), 1);  // 白色线
     
-    putText(result, blue, Point(0, offset.x + 30), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    line(result, Point(0, offset.x ), Point(iWidth, offset.x ), Scalar(255, 255, 255), 1);  // 白色线
+    line(result, Point(offset.y, 0), Point(offset.y, iHeight), Scalar(255, 255, 255), 1); // 白色线
+    putText(result, "Y", Point(offset.y + 10,  20), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 0, 255), 1);
+    putText(result, "X", Point(iWidth - 50, offset.x - 10), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 0, 0), 1);
+    
+    circle(result, Point(offset.y, offset.x), 5, Scalar(0, 0, 255), -1); // 绘制红色小圆点
+    // 等距线间隔，单位为米
+    double interval_x = 5.0;
+    // 计算等距线在图像中的位置并绘制
+    for (double y = -50; y <= 50; y += interval_x) {
+        int x = static_cast<int>(-y * dScale + offset.x); // 计算等距线在图像中的位置   //若(-y * scale + offset.x)那么x轴上的数字就反了
+        if (x >= 0 && x < iHeight) {  // 确保线在图像边界内
+            // line(m_image, Point(0, x), Point(m_iWidth, x), Scalar(200, 200, 200), 1); // 浅灰色
+            putText(result, std::to_string(static_cast<int>(y)) + "m", Point(offset.y + 10, x - 5), 
+                    FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
+        }
+    }
 
-    putText(result, red, Point(0, offset.x + 50), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    // 等距线间隔，单位为米
+    double interval_y= 1.0;
+    // 计算等距线在图像中的位置并绘制
+    for (double x = -50; x <= 50; x += interval_y) {
+        int y = static_cast<int>(x * dScale + offset.y); // 计算等距线在图像中的位置
+        if(x == 0)
+            continue;
+        else{
+            if (y >= 0 && y < iWidth) {  // 确保线在图像边界内
+                // line(image, Point(y, 0), Point(y, height), Scalar(200, 200, 200), 1); // 浅灰色
+                putText(result, std::to_string(static_cast<int>(x)), Point(y, offset.x + 15), 
+                        FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
+            }
+        }   
+    }
+
+
+
+    putText(result, white, Point(0, offset.x + 35 ), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
     
-    putText(result, green, Point(offset.y-80, offset.x + 10), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    putText(result, blue, Point(0, offset.x + 55), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
+
+    putText(result, red, Point(0, offset.x + 75), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
+    
+    putText(result, green, Point(0, offset.x + 90), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
+    // putText(result, green, Point(offset.y-80, offset.x + 10), 
+    //                 FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
 
     std::string sFilePath;
     if(iSideFlag == 0){
@@ -1165,25 +1353,25 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
 #endif
 
 
-//正常
-#if 1
+//正常使用
+#if 0
 // //调用聚类方法, 输出 ptr , 用来加入霍夫变换或直线分割
 bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputCloud, std::vector<PointCloud2Intensity::Ptr> &vClusterPtr, unsigned long long ullTime, int iSideFlag)
 {
     cv::Point2d offset;    
     if(iSideFlag == 0){ //右
-        offset.x = m_stLCDConfig.hough_offsetX;
-        offset.y = m_stLCDConfig.hough_right_offsetY;
+        offset.x = m_strLCDConfig.hough_offsetX;
+        offset.y = m_strLCDConfig.hough_right_offsetY;
     }
     else{               //左
-        offset.x = m_stLCDConfig.hough_offsetX;
-        offset.y = m_stLCDConfig.hough_left_offsetY;
+        offset.x = m_strLCDConfig.hough_offsetX;
+        offset.y = m_strLCDConfig.hough_left_offsetY;
     }
 
 
-    int iWidth = m_stLCDConfig.hough_width;
-    int iHeight = m_stLCDConfig.hough_height;
-    double dScale = m_stLCDConfig.hough_scale; //50个像素表示1米
+    int iWidth = m_strLCDConfig.hough_width;
+    int iHeight = m_strLCDConfig.hough_height;
+    double dScale = m_strLCDConfig.hough_scale; //默认是50个像素表示1米
     
     cv::Mat temp_image = cv::Mat::zeros(iHeight, iWidth, CV_8UC1); //单通道黑色
     
@@ -1191,27 +1379,32 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
     // 遍历原始点云
     for (const auto& pt : pInputCloud->points) {
        
+        // 图像坐标 u 轴向右 为正（与点云x轴相同）（列），图像坐标 v 轴向下为正（与点云y轴相反）（行）。
         // // 投影时将3D点的x和y坐标互换，并应用比例缩放和偏移
         int x = static_cast<int>(-pt.y * dScale + offset.x);
         int y = static_cast<int>(pt.x * dScale + offset.y);
 
         // 检查是否在图像边界内
         if (x >= 0 && x < iWidth && y >= 0 && y < iHeight){
-            temp_image.at<uchar>(x,y) = 255;    //将点设置为白色， 
+            temp_image.at<uchar>(x,y) = 255;    //将点设置为白色
         }
     }
 
     auto start = std::chrono::high_resolution_clock::now();
 
-/**/ // // 进行膨胀操作连接断点  
-    int dilationSize = 2; // 膨胀核大小
-    //cv::MORPH_RECT 函数返回矩形卷积核（形状），MORPH_ELLIPSE（椭圆核）；Size：卷积核大小； Point：表示卷积核有x行，y列
+/**/    // // 进行膨胀操作连接断点  
+    int dilationSize = 1; // 膨胀核大小
+    //cv::MORPH_RECT 函数返回矩形卷积核（形状），MORPH_ELLIPSE（椭圆核），cv::MORPH_CROSS（十字核）；Size：卷积核大小； Point：表示卷积核有x行，y列
     //3*3：最小有效核； 5*5更平滑的连接效果
-    cv::Mat element = cv::getStructuringElement(cv::MORPH_ELLIPSE,
+    cv::Mat element = cv::getStructuringElement(cv::MORPH_CROSS,
                                                 cv::Size(2 * dilationSize + 1, 2 * dilationSize + 1),
                                                 cv::Point(dilationSize, dilationSize));
+                                                
     cv::dilate(temp_image, temp_image, element);  //膨胀
-    
+ 
+
+    // morphologyEx(temp_image, temp_image, MORPH_OPEN, element);//形态学开运算
+
 /*单纯进行轮廓检测*/
     // 检查图像是否是二值图
     // cv::threshold(temp_image, temp_image, 127, 255, cv::THRESH_BINARY);  //大于第三个值的点重新设置为255
@@ -1258,9 +1451,12 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
 
                 pcl::PointXYZI point;
                 pcl::PointXYZRGB colored_point;
-                float x0 = 0.02 * points[j].x - 2;      //以后计算完逆矩阵后需要把x和y对调
-                float y0 = -0.02 * points[j].y + 11;
-            
+                // float x0 = 0.02 * points[j].x - 2;      //以后计算完逆矩阵后需要把x和y对调
+                // float y0 = -0.02 * points[j].y + 11;
+
+                float x0 = R_Inv_ToRightProject(0,1) * points[j].x + R_Inv_ToRightProject(0,2);
+                float y0 = R_Inv_ToRightProject(1,0) * points[j].y + R_Inv_ToRightProject(1,2);
+
                 point.x = x0;
                 point.y = y0;
                 point.z = 1;
@@ -1286,9 +1482,12 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
 
                 pcl::PointXYZI point;
                 pcl::PointXYZRGB colored_point;
-                float x1 = 0.02 * points[j].x - 8;
-                float y1 = -0.02 * points[j].y + 11;
-            
+                // float x1 = 0.02 * points[j].x - 8;      //以后计算完逆矩阵后需要把x和y对调
+                // float y1 = -0.02 * points[j].y + 11;
+
+                float x1 = R_Inv_ToLeftProject(0,1) * points[j].x + R_Inv_ToLeftProject(0,2);
+                float y1 = R_Inv_ToLeftProject(1,0) * points[j].y + R_Inv_ToLeftProject(1,2);
+      
                 point.x = x1;
                 point.y = y1;
                 point.z = 1;
@@ -1582,8 +1781,8 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
     //1：ρ的分辨率（像素）（累加器的距离分辨率）； 生成极坐标时候的像素扫描步长，一般取值为 1 ，不要大于图像尺寸的一半
     // CV_PI / 180：θ的分辨率（）（累加器的角度分辨率）；生成极坐标时候的角度步长
     //50：累加器的阈值；50：最短线段长度；10：最大间隔
-    cv::HoughLinesP(temp_image, lines, m_stLCDConfig.hough_rho, m_stLCDConfig.hough_theta, 
-                    m_stLCDConfig.hough_threshold, m_stLCDConfig.hough_minLineLength, m_stLCDConfig.hough_maxLineGap);
+    cv::HoughLinesP(temp_image, lines, m_strLCDConfig.hough_rho, m_strLCDConfig.hough_theta, 
+                    m_strLCDConfig.hough_threshold, m_strLCDConfig.hough_minLineLength, m_strLCDConfig.hough_maxLineGap);
    
     //绘制结果
     cv::Mat result;
@@ -1629,20 +1828,59 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
     //图片下面加注释
     std::string white = "white: All contours";
     std::string blue = "blue: contour less than 25";
-    std::string red = "red: direction less than 60 degrees";
+    std::string red = "red: direction less than 40 degrees";
     std::string green = "green: result";
-    line(result, Point(0, offset.x -10), Point(iWidth, offset.x -10), Scalar(255, 255, 255), 1);  // 白色线
-    putText(result, white, Point(0, offset.x + 10), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    // line(result, Point(0, offset.x -10), Point(iWidth, offset.x -10), Scalar(255, 255, 255), 1);  // 白色线
     
-    putText(result, blue, Point(0, offset.x + 30), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    line(result, Point(0, offset.x ), Point(iWidth, offset.x ), Scalar(255, 255, 255), 1);  // 白色线
+    line(result, Point(offset.y, 0), Point(offset.y, iHeight), Scalar(255, 255, 255), 1); // 白色线
+    putText(result, "Y", Point(offset.y + 10,  20), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 0, 255), 1);
+    putText(result, "X", Point(iWidth - 50, offset.x - 10), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(255, 0, 0), 1);
+    
+    circle(result, Point(offset.y, offset.x), 5, Scalar(0, 0, 255), -1); // 绘制红色小圆点
+    // 等距线间隔，单位为米
+    double interval_x = 5.0;
+    // 计算等距线在图像中的位置并绘制
+    for (double y = -50; y <= 50; y += interval_x) {
+        int x = static_cast<int>(-y * dScale + offset.x); // 计算等距线在图像中的位置   //若(-y * scale + offset.x)那么x轴上的数字就反了
+        if (x >= 0 && x < iHeight) {  // 确保线在图像边界内
+            // line(m_image, Point(0, x), Point(m_iWidth, x), Scalar(200, 200, 200), 1); // 浅灰色
+            putText(result, std::to_string(static_cast<int>(y)) + "m", Point(offset.y + 10, x - 5), 
+                    FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
+        }
+    }
 
-    putText(result, red, Point(0, offset.x + 50), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    // 等距线间隔，单位为米
+    double interval_y= 1.0;
+    // 计算等距线在图像中的位置并绘制
+    for (double x = -50; x <= 50; x += interval_y) {
+        int y = static_cast<int>(x * dScale + offset.y); // 计算等距线在图像中的位置
+        if(x == 0)
+            continue;
+        else{
+            if (y >= 0 && y < iWidth) {  // 确保线在图像边界内
+                // line(image, Point(y, 0), Point(y, height), Scalar(200, 200, 200), 1); // 浅灰色
+                putText(result, std::to_string(static_cast<int>(x)), Point(y, offset.x + 15), 
+                        FONT_HERSHEY_SIMPLEX, 0.5, Scalar(200, 200, 200), 1);
+            }
+        }   
+    }
+
+
+
+    putText(result, white, Point(0, offset.x + 35 ), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
     
-    putText(result, green, Point(offset.y-80, offset.x + 10), 
-                    FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
+    putText(result, blue, Point(0, offset.x + 55), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
+
+    putText(result, red, Point(0, offset.x + 75), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
+    
+    putText(result, green, Point(0, offset.x + 90), 
+                    FONT_HERSHEY_SIMPLEX, 0.6, Scalar(200, 200, 200), 1);
+    // putText(result, green, Point(offset.y-80, offset.x + 10), 
+    //                 FONT_HERSHEY_SIMPLEX, 0.7, Scalar(200, 200, 200), 1);
 
     std::string sFilePath;
     if(iSideFlag == 0){
@@ -1652,8 +1890,8 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
         sFilePath = "/home/zyl/echiev_lidar_curb_detection/log/temp_left_side_image/" + std::to_string(ullTime) +"_"+std::to_string(iSideFlag) +".png";
     }
     
-    cv::imwrite(sFilePath,result);
-    //  cv::imwrite(sFilePath,temp_image);
+    //  cv::imwrite(sFilePath,result);
+    cv::imwrite(sFilePath,temp_image);
 
     // return false; 
     
@@ -1709,22 +1947,19 @@ bool LidarCurbDectection::IsClustering_hough(PointCloud2Intensity::Ptr pInputClo
 #endif
 
 
-bool LidarCurbDectection::FinalSend(int iLeftId, int iRightId){
-
-}
 
 
 void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfterVoxelGrid, PointCloud2Intensity::Ptr pNoGroudPoints, unsigned long long ullTime){
     
-    bool bProjectionModel = m_stLCDConfig.projectionModel;
-    bool bSavePictureModel = m_stLCDConfig.savePictureModel;
+    bool bProjectionModel = m_strLCDConfig.projectionModel;
+    bool bSavePictureModel = m_strLCDConfig.savePictureModel;
 
-    float fLeftMinClusterThreshold = m_stLCDConfig.leftMinClusterThreshold;
-    float fLeftMaxClusterThreshold = m_stLCDConfig.leftMaxClusterThreshold;
-    float fLeftPointsDistance = m_stLCDConfig.leftPointsDistance;
-    float fRightMinClusterThreshold = m_stLCDConfig.rightMinClusterThreshold;
-    float fRightMaxClusterThreshold = m_stLCDConfig.rightMaxClusterThreshold;
-    float fRightPointsDistance = m_stLCDConfig.rightPointsDistance;
+    float fLeftMinClusterThreshold = m_strLCDConfig.leftMinClusterThreshold;
+    float fLeftMaxClusterThreshold = m_strLCDConfig.leftMaxClusterThreshold;
+    float fLeftPointsDistance = m_strLCDConfig.leftPointsDistance;
+    float fRightMinClusterThreshold = m_strLCDConfig.rightMinClusterThreshold;
+    float fRightMaxClusterThreshold = m_strLCDConfig.rightMaxClusterThreshold;
+    float fRightPointsDistance = m_strLCDConfig.rightPointsDistance;
 
     m_pAll_deal_cluster_cloud->points.clear();
     m_pAll_output_curve_cloud->points.clear();
@@ -1750,9 +1985,9 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
         // else
         //     continue;
 
-        if(pNoGroudPoints->points[i].x > 0 && pNoGroudPoints->points[i].y < 10)  //右侧;  这里把右侧道路的y也限制，不然点云数量太多，影响欧式聚类
+        if(pNoGroudPoints->points[i].x > 0 && pNoGroudPoints->points[i].y < m_strLCDConfig.rightYMax)  //右侧;  这里把右侧道路的y也限制，不然点云数量太多，影响欧式聚类
             vCrudeExtractTwoEdgeCloudPtrList[0]->points.push_back(pNoGroudPoints->points[i]);
-        else if(pNoGroudPoints->points[i].x < -5 && pNoGroudPoints->points[i].y < 10)    //左侧 && pNoGroudPoints->points[i].x > -5.15  -4.8 |  x < -2.5 y < 1.5
+        else if(pNoGroudPoints->points[i].x < 0 && pNoGroudPoints->points[i].y < m_strLCDConfig.leftYMax)    //左侧 && pNoGroudPoints->points[i].x > -5.15  -4.8 |  x < -2.5 y < 1.5
             vCrudeExtractTwoEdgeCloudPtrList[1]->points.push_back(pNoGroudPoints->points[i]);
         else
             continue;
@@ -1795,8 +2030,8 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
 
 //右侧无滤波
 #if 1
-    if( m_stLCDConfig.isDetectionRightRoad && 
-        !m_stLCDConfig.isRunningFilter &&
+    if( m_strLCDConfig.isDetectionRightRoad && 
+        !m_strLCDConfig.isRunningFilter &&
         !vCrudeExtractTwoEdgeCloudPtrList[0]->points.empty())     
     {    
         pResult->points.clear();
@@ -1879,8 +2114,8 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
 //左侧无滤波
 #if 1
     double x_left_avg = 0;
-    if( m_stLCDConfig.isDetectionLeftRoad && 
-        !m_stLCDConfig.isRunningFilter &&
+    if( m_strLCDConfig.isDetectionLeftRoad && 
+        !m_strLCDConfig.isRunningFilter &&
         !vCrudeExtractTwoEdgeCloudPtrList[1]->points.empty())     
     {    
         pResult->points.clear();
@@ -1961,10 +2196,124 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
     }
 #endif
 
+
+//右侧滑窗滤波版本
+#if 1
+    if( m_strLCDConfig.isDetectionRightRoad &&
+        m_strLCDConfig.isRunningFilter && 
+        !vCrudeExtractTwoEdgeCloudPtrList[0]->points.empty())     
+    {     
+        pResult->points.clear();
+
+        //计算簇的平均x坐标
+        double x_sum = 0;
+        double x_right_avg = 0;
+        for (const auto& point : vCrudeExtractTwoEdgeCloudPtrList[0]->points) {
+            x_sum += point.x;
+        }
+        x_right_avg = x_sum / vCrudeExtractTwoEdgeCloudPtrList[0]->size();
+        
+        LOG_RAW("***道路右侧输入的点数: %d , 平均x: %f\n", vCrudeExtractTwoEdgeCloudPtrList[0]->points.size(), x_right_avg);
+        right_flag = IsClustering_hough(vCrudeExtractTwoEdgeCloudPtrList[0], clusters_ptr_right, ullTime, 0);
+        // left_flag = IsClustering(fLeftPointsDistance, fLeftMaxClusterThreshold, fLeftMinClusterThreshold, vCrudeExtractTwoEdgeCloudPtrList[1], clusters_ptr_left);
+        // left_flag = IsClustering(1, 200, 10, vCrudeExtractTwoEdgeCloudPtrList[1], clusters_indices_left);
+        
+        // //if(left_flag)
+        // //    vClusterIndices.insert(vClusterIndices.end(),cluster_indices_left.begin(),cluster_indices_left.end());
+        
+        if(right_flag){
+
+            if(clusters_ptr_right.size() >= 2){
+                // pLastestRightCluster = getLargestCluster(clusters_ptr_left);
+                pLastestRightCluster = getCloserRightCluster(clusters_ptr_right);
+                // vClusters.push_back(pLastestLeftCluster);
+                LOG_RAW("右侧大于2个簇, 点云数量： %d\n", pLastestRightCluster->points.size());
+            }
+            else{
+                pLastestRightCluster = getCluster(clusters_ptr_right);
+                // vClusters.push_back(pLastestLeftCluster);
+                LOG_RAW("右侧只有1个簇, 点云数量： %d\n", pLastestRightCluster->points.size());
+            }
+
+           
+            //曲线拟合计算
+            pResult = m_pCurveFitting->CurveFittingStart(pLastestRightCluster,ullTime,0);
+
+            right_line_running_info.runningValue = m_iSystemRunCount;
+            right_line_running_info.existFlag = true;
+            right_line_running_info.linePointCloud = pResult;
+            m_qRightLineInfo.push(right_line_running_info);
+          
+        }    
+        else{
+           
+            right_line_running_info.runningValue = m_iSystemRunCount;
+            right_line_running_info.existFlag = false;
+            PointCloud2Intensity::Ptr pInvalidPointCloud(new PointCloud2Intensity());
+            pcl::PointXYZI invaliData;
+            invaliData.x = 0;
+            invaliData.y = 0;
+            invaliData.z = 0;
+            invaliData.intensity = 125;
+            pInvalidPointCloud->points.push_back(invaliData);
+            right_line_running_info.linePointCloud = pInvalidPointCloud;    
+            m_qRightLineInfo.push(right_line_running_info);
+           
+        }  
+
+        // m_pAll_output_curve_cloud->points.clear();
+    
+        //滑窗操作
+        if(fmod(m_iSystemRunCount, m_strLCDConfig.slideWindowCount) == 0){
+            pResult = SlideWindowProcess(m_qRightLineInfo);
+            // std::cout<<"滑窗结束后个数： "<<m_qLeftLineInfo.size()<<std::endl;
+
+            strCurbs.iCounts += 1;
+            strCurbs.pstrCVLane[0].byType = 1;
+            for(int i = 0; i < pResult->points.size(); i++){
+                float x = pResult->points[i].x;
+                float y = pResult->points[i].y;
+                strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fX = x;
+                strCurbs.pstrCVLane[1].pstrPoint2fBirdEyeView[i].fY = y;
+                strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fX = x;
+                strCurbs.pstrCVLane[1].pstrPoint2fCamera[i].fY = y; 
+
+                LOG_RAW("   滑窗操作最后结果点数 = %d, i = %d, x = %f, y = %f \n", pResult->points.size(), i, x, y);
+
+                pcl::PointXYZRGB tempRGB;
+                tempRGB.x = x;
+                tempRGB.y = y;
+                tempRGB.z = 0;
+                tempRGB.r = 255;
+                tempRGB.g = 255;
+                tempRGB.b = 255;
+                m_pAll_output_curve_cloud->points.push_back(tempRGB);
+
+            }
+        
+        
+            file_right<<ullTime<<","<<pResult->points[0].x<<","<<pResult->points[0].y<<","<<pResult->points[1].x<<","<<pResult->points[1].y<<endl;
+            file_right.close();
+
+            byAlgNum++;
+            int iRet = CameraLaneMCServerSend((unsigned char *)&strCurbs, sizeof(STR_CV_LANE_DATA));
+
+            //点云转图像
+            if(bProjectionModel){
+                m_pViewer->ProjectPointCloud(pAfterVoxelGrid, pNoGroudPoints, m_pAll_deal_cluster_cloud, m_pAll_output_curve_cloud);
+                // m_pViewer->Display();
+                if(bSavePictureModel)
+                    m_pViewer->SaveImage(ullTime);
+            }    
+        }
+    }
+
+#endif
+
 //左侧滑窗滤波版本
 #if 1
-    if( m_stLCDConfig.isDetectionLeftRoad &&
-        m_stLCDConfig.isRunningFilter && 
+    if( m_strLCDConfig.isDetectionLeftRoad &&
+        m_strLCDConfig.isRunningFilter && 
         !vCrudeExtractTwoEdgeCloudPtrList[1]->points.empty())     
     {     
         pResult->points.clear();
@@ -2024,8 +2373,10 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
            
         }  
     
+        // m_pAll_output_curve_cloud->points.clear();
+
         //滑窗操作
-        if(fmod(m_iSystemRunCount, m_stLCDConfig.slideWindowCount) == 0){
+        if(fmod(m_iSystemRunCount, m_strLCDConfig.slideWindowCount) == 0){
             pResult = SlideWindowProcess(m_qLeftLineInfo);
             // std::cout<<"滑窗结束后个数： "<<m_qLeftLineInfo.size()<<std::endl;
 
@@ -2071,7 +2422,7 @@ void LidarCurbDectection::EdgeClusteringProcess(PointCloud2Intensity::Ptr pAfter
 
 #endif
 
-    if(!m_stLCDConfig.isRunningFilter){
+    if(!m_strLCDConfig.isRunningFilter){
         byAlgNum++;
         int iRet = CameraLaneMCServerSend((unsigned char *)&strCurbs, sizeof(STR_CV_LANE_DATA));
 
@@ -2207,7 +2558,7 @@ PointCloud2Intensity::Ptr LidarCurbDectection::SlideWindowProcess(std::queue<Lin
     cv::Point2f point_front_sum, point_back_sum;
     int validDataCount = 0;
     // std::cout<<"当簇为0时: 3"<<std::endl;
-    for(int i = 0; i < m_stLCDConfig.slideWindowCount; i++){
+    for(int i = 0; i < m_strLCDConfig.slideWindowCount; i++){
 
         LineRunningInfo tempLineInfo = tempQueue.front();
         tempQueue.pop();
@@ -2220,12 +2571,12 @@ PointCloud2Intensity::Ptr LidarCurbDectection::SlideWindowProcess(std::queue<Lin
                 if(j == 0){
                     point_front_sum.x += tempLineInfo.linePointCloud->points[j].x;
                     point_front_sum.y += tempLineInfo.linePointCloud->points[j].y;
-                    // std::cout<<"y=0时: x = "<<tempLineInfo.linePointCloud->points[j].x<<" , y = "<<tempLineInfo.linePointCloud->points[j].y<<std::endl;
+                    std::cout<<"y=0时: x = "<<tempLineInfo.linePointCloud->points[j].x<<" , y = "<<tempLineInfo.linePointCloud->points[j].y<<std::endl;
                 }
                 else{
                     point_back_sum.x += tempLineInfo.linePointCloud->points[j].x;
                     point_back_sum.y += tempLineInfo.linePointCloud->points[j].y;
-                    // std::cout<<"y=3时: x = "<<tempLineInfo.linePointCloud->points[j].x<<" , y = "<<tempLineInfo.linePointCloud->points[j].y<<std::endl;
+                    std::cout<<"y=3时: x = "<<tempLineInfo.linePointCloud->points[j].x<<" , y = "<<tempLineInfo.linePointCloud->points[j].y<<std::endl;
                 }
             }
         
@@ -2294,12 +2645,12 @@ void LidarCurbDectection::GroudSegmentationStart(PointCloud2Intensity::Ptr pInCl
     // float min_x = 0.0;
     // int index = 0;
 
-    float fLeftXMin = m_stLCDConfig.leftXMin;
-    float fLeftXMax = m_stLCDConfig.leftXMax;
-    float fLeftYMax = m_stLCDConfig.leftYMax;
-    float fRightXMin = m_stLCDConfig.rightXMin;
-    float fRightXMax = m_stLCDConfig.rightXMax;
-    float fRightYMax = m_stLCDConfig.rightYMax;
+    float fLeftXMin = m_strLCDConfig.leftXMin;
+    float fLeftXMax = m_strLCDConfig.leftXMax;
+    float fLeftYMax = m_strLCDConfig.leftYMax;
+    float fRightXMin = m_strLCDConfig.rightXMin;
+    float fRightXMax = m_strLCDConfig.rightXMax;
+    float fRightYMax = m_strLCDConfig.rightYMax;
     
 
     //分段进行平面分割 
@@ -2308,7 +2659,11 @@ void LidarCurbDectection::GroudSegmentationStart(PointCloud2Intensity::Ptr pInCl
     //右+
     for(int i = 0; i < pInCloud->points.size(); i++){
         
-        if( pInCloud->points[i].x <= fRightXMax && pInCloud->points[i].x >= fRightXMin && std::abs(pInCloud->points[i].y) < fLeftYMax){
+        if( pInCloud->points[i].x <= fRightXMax && 
+            pInCloud->points[i].x >= fRightXMin && 
+            std::abs(pInCloud->points[i].y) < fLeftYMax){
+        
+            
             m_vCloudPtrList[0]->points.push_back(pInCloud->points[i]);
 
             
@@ -2330,8 +2685,10 @@ void LidarCurbDectection::GroudSegmentationStart(PointCloud2Intensity::Ptr pInCl
         }
 
         //左-
-        //6楼垃圾桶  -2.85<x<0
-        if( pInCloud->points[i].x >= fLeftXMin && pInCloud->points[i].x < fLeftXMax && std::abs(pInCloud->points[i].y) < fRightYMax){
+        if( pInCloud->points[i].x >= fLeftXMin && 
+            pInCloud->points[i].x < fLeftXMax && 
+            std::abs(pInCloud->points[i].y) < fRightYMax){
+            
             m_vCloudPtrList[1]->points.push_back(pInCloud->points[i]);
         
             // 水平夹角
@@ -2361,14 +2718,14 @@ void LidarCurbDectection::GroudSegmentationStart(PointCloud2Intensity::Ptr pInCl
     std::cout<<"x轴左边(-): "<<m_vCloudPtrList[1]->points.size()<<" , x轴右边(+): "<<m_vCloudPtrList[0]->points.size()<<std::endl;
     
     //地面点过滤
-    GroudFilterFromSAC(m_pGroundPoints, m_pNoGroundPoints);
-    // GroudFilterFromAPMF(m_pGroundPoints, m_pNoGroundPoints);
+    // GroudFilterFromSAC(m_pGroundPoints, m_pNoGroundPoints);
+    GroudFilterFromAPMF(m_pGroundPoints, m_pNoGroundPoints);
 
     if(m_pNoGroundPoints->points.empty()){
         std::cout<<"地面上的点为0,  时间： "<<ullTime<<std::endl;
     }
 
-    printf("时间: %lld , 地面点：%d, 非地面点: %d, 加起来：%d \n", ullTime, m_pGroundPoints->points.size(), m_pNoGroundPoints->points.size(),
+    printf("时间: %lld , 地面点：%ld, 非地面点: %ld, 加起来：%ld \n", ullTime, m_pGroundPoints->points.size(), m_pNoGroundPoints->points.size(),
                                 (m_pGroundPoints->points.size()+m_pNoGroundPoints->points.size()));
 
     //根据高度提取过滤点
@@ -2376,17 +2733,69 @@ void LidarCurbDectection::GroudSegmentationStart(PointCloud2Intensity::Ptr pInCl
 
     EdgeClusteringProcess(pInCloud, m_pNoGroundPoints, ullTime);
 
-    // plane_viewer->setBackgroundColor(0, 0, 0);
-    // plane_viewer->addCoordinateSystem(1.0);
-    // plane_viewer->removeAllPointClouds();
-    // plane_viewer->addPointCloud<pcl::PointXYZI>(m_pNoGroundPoints, "input_cloud");
-    // plane_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "input_cloud");
-    // // plane_viewer->addPlane(*pCoefficients, "plane");
-    // plane_viewer->spinOnce();
+    
+/*下面当在pcd读取模式时，需要换成spin()，但是两个窗口只会有一个窗口有数据，应该取决于哪个窗口代码排前面(即被堵塞)
+在pcap模式时，需要改成spinOnce()
+*/
 
+    if(!m_strLCDConfig.onlineModel && m_strLCDConfig.pcapRunningModel && m_strLCDConfig.openGroudViewer){
+        
+        
+        ground_viewer->setBackgroundColor(0, 0, 0);
+        ground_viewer->addCoordinateSystem(1.0);
+        ground_viewer->removeAllPointClouds();
+        ground_viewer->addPointCloud<pcl::PointXYZI>(m_pGroundPoints, "GroundPoints");
+        ground_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "GroundPoints");
+        ground_viewer->spinOnce();
+
+        // ground_viewer->spin();
+        //  ground_viewer->spinOnce(); //这样视图会无法拖动
+        // ground_viewer->addPlane(*pCoefficients, "plane");
+    }
+    
+
+    if(!m_strLCDConfig.onlineModel && m_strLCDConfig.pcapRunningModel && m_strLCDConfig.openGroudViewer){
+        
+        
+    //       // 动态调整视图范围
+    // pcl::PointXYZI min_point, max_point;
+    // pcl::getMinMax3D(*m_pNoGroundPoints, min_point, max_point);
+    // double x_center = (min_point.x + max_point.x) / 4.0;
+    // double y_center = (min_point.y + max_point.y) / 4.0;
+    // double z_center = (min_point.z + max_point.z) / 4.0;
+    // double max_extent = std::max({max_point.x - min_point.x, max_point.y - min_point.y, max_point.z - min_point.z});
+    // double camera_distance = max_extent * 2.0; // 2倍最大范围
+        
+    // std::cout << "Min point: (" << min_point.x << ", " << min_point.y << ", " << min_point.z << ")\n";
+    // std::cout << "Max point: (" << max_point.x << ", " << max_point.y << ", " << max_point.z << ")\n";
+
+
+        no_ground_viewer->setBackgroundColor(0, 0, 0);
+        no_ground_viewer->addCoordinateSystem(1.0);
+        no_ground_viewer->removeAllPointClouds();
+        no_ground_viewer->addPointCloud<pcl::PointXYZI>(m_pNoGroundPoints, "NoGroundPoints");
+        no_ground_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "NoGroundPoints");
+        
+// no_ground_viewer->setCameraPosition(0, 0, 10, 0, 0, 0);
+
+// // 设置相机
+//     no_ground_viewer->setCameraPosition(
+//         x_center, y_center, z_center + camera_distance,
+//         x_center, y_center, z_center,
+//         0, 1, 0
+//     );
+//     no_ground_viewer->setCameraClipDistances(0.1, camera_distance * 4.0);
+
+         no_ground_viewer->spinOnce();
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // no_ground_viewer->spin();
+        // no_ground_viewer->spinOnce(); //只读取pcd这样视图会无法拖动
+        // no_ground_viewer->addPlane(*pCoefficients, "plane");
+    }
 
 
 
 }
 
 
+}

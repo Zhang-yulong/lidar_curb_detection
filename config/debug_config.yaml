@@ -2,24 +2,56 @@
 
 
 Lidar:
-  selfComputerIP: "192.168.86.70"
+  selfComputerIP: "192.168.86.88"
   msopPort: 2368
   difopPort: 2369
   lidarType: CH64w
   verticalUpperAngle: 15
   verticalLowerAngle: -25
   scanRings: 128
+  pathTolidarTransformConfig: 3 #0: 电脑E1小车 1: E1现场车 2:佛山T1 3:佛山现场T1
   
-Road:
-  leftXMin: -6.0
-  leftXMax: 0.0 #固定
-  leftYMax: 10.0
-  rightXMin: 0.0 #固定
-  rightXMax: 6.0
-  rightYMax: 10.0
-  heightLower: 0.0
-  heightUpper: 0.9
+Model:
+  onlineModel: 1
+  pcapRunningModel: 0
+  pcdRunningModel: 0
+  pcdPath: "1735884601539"
+  
+  openGroudViewer: 0 # 打开分割地面点的点云视图
+  openClusterViewer: 0 # 打开聚类的点云视图
+  
+Viewer:
+  projectionModel: 1
+  savePictureModel: 1
+  
+  width: 1000
+  height: 1000 #600 #1000
+  scale: 25
+  # 与点云坐标一致
+  x: 900  #550   #900
+  y: 500   #500  #500
+  # 整个窗口向右旋转90度
+  # x: 500
+  # y: 100
+  
+Pcd:
+ savePcd: 0
 
+Road:
+  # 左
+  leftXMin: -13
+  leftXMax: 0.0 # 固定值：0m
+  leftYMax: 30.0 # 向前
+  # 右
+  rightXMin: 0.0 # 固定值：0m
+  rightXMax: 13.0
+  rightYMax: 30.0 # 向前
+  # 高度过滤
+  heightLower: 1.0
+  heightUpper: 3.0
+  # 
+  isDetectionLeftRoad: 1
+  isDetectionRightRoad: 1
 
 GroudSegmentationFromPMF:
   maxWindowSize: 20
@@ -43,13 +75,13 @@ Clustering:
   
   
 HoughLinesP:
-  width: 500
-  height: 600 
-  scale: 50.0
+  width: 500 #500 # 500
+  height: 700 #600 #700
+  scale: 25 #
   # 与点云坐标一致
-  x: 550  #调它能设置窗口上下
-  left_y: 400  #调它能设置窗口左右
-  right_y: 100
+  x: 600  #调它能设置窗口上下，与height有关 #550 #600
+  left_y: 450  #调它能设置窗口左右,与width有关 #400 # 450
+  right_y: 50  #100 #50
   rho: 1 #累加器的距离分辨率；单位：像素
   theta: 0.0174532 # π/180
   threshold: 50
@@ -65,24 +97,6 @@ RANSAC:
   kMin: 0.0
   kMax: 0.0
   
-Model:
-  pcapModel: 0
-  onlyPcd: 0
-  pcdPath: "1731923844781"
-
-Viewer:
-  projection: 1
-  savePicture: 1
-  
-  width: 1000
-  height: 1000 #600 #1000
-  scale: 50.0
-  # 与点云坐标一致
-  x: 900  #550   #900
-  y: 500   #500  #500
-  # 整个窗口向右旋转90度
-  # x: 500
-  # y: 100
-  
-Pcd:
- savePcd: 0
+SlideWindow:
+  isRunningFilter: 0 #不滤波时必须为0 
+  slideWindowCount: 3 #3帧做一次滑窗滤波

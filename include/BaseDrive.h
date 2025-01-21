@@ -5,16 +5,17 @@
 #include <string>
 #include <mutex>
 
-
+namespace Lidar_Curb_Dedection
+{
 
 class BaseDrive{
 
 public:
     BaseDrive();
     virtual void Start() = 0;
-    virtual void Init(std::string ComputerIP, int MsopPort, int DifopPort, const std::string LidarType, int Number) = 0;
+    virtual void Init() = 0;
     virtual void Free() = 0;
     virtual ~BaseDrive();
 };
-
+}
 #endif

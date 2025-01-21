@@ -2,7 +2,8 @@
 
 
 // pcl::visualization::PCLVisualizer::Ptr CurveViewer(new pcl::visualization::PCLVisualizer("CurveFitting"));
-
+namespace Lidar_Curb_Dedection
+{
 
 // 选出左右两侧的最大簇
 auto getLargestCluster = [](const std::vector<PointCloud2Intensity::Ptr>& clusters) {
@@ -18,14 +19,7 @@ auto getCluster = [](const std::vector<PointCloud2Intensity::Ptr>& clusters){
 };
 
 
-
-CurveFitting::CurveFitting(const float fDistinguishRoadSideThreshold)
-    : m_fDistinguishRoadSideThreshold(fDistinguishRoadSideThreshold)
-{
-    // std::cout<<"CurveFitting 构造"<<std::endl;
-}
-
-CurveFitting::CurveFitting(Config & config)
+CurveFitting::CurveFitting(const STR_CONFIG & config)
     : m_stCFConfig(config)
 {
     m_fDistinguishRoadSideThreshold = m_stCFConfig.distinguishRoadSideThreshold;
@@ -271,7 +265,7 @@ double CurveFitting::pointToLineDistance(const cv::Point& point, const LinePolar
 
 PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pInCloud, float yMin, float yMax, unsigned long long ullTime){
 
-    LOG_RAW("进入Curve计算 \n");
+    LOG_RAW("进入Curve计算 , size: %d\n",pInCloud->points.size() );
     PointCloud2RGB::Ptr curve(new PointCloud2RGB());
 
     int n = pInCloud->points.size();
@@ -303,8 +297,10 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
     double k = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x);
     double b = (sum_y - k * sum_x) / n;
 
+    LOG_RAW("输出(k: %f , b: %f)\n", k, b);
+
     // for(double y = yMin; y <= yMax; y += 0.1){
-    for(double y = min_y; y <= max_y; y += 0.01){
+    for(double y = 0; y <= 3; y += 0.01){
         double x = (y-b) / k;
 
         pcl::PointXYZRGB point;
@@ -324,14 +320,15 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
         mean_x += pInCloud->points[i].x;
         mean_y += pInCloud->points[i].y;
 
-        if(pInCloud->points[i].x < min_x)
-            min_x = pInCloud->points[i].x;
+        // std::cout<<"("<<pInCloud->points[i].x<<","<<pInCloud->points[i].y<<")"<<std::endl;
+        // if(pInCloud->points[i].x < min_x)
+        //     min_x = pInCloud->points[i].x;
 
-        if(pInCloud->points[i].y < min_y)
-            min_y = pInCloud->points[i].y;
+        // if(pInCloud->points[i].y < min_y)
+        //     min_y = pInCloud->points[i].y;
 
-        if(pInCloud->points[i].y > max_y)
-            max_y = pInCloud->points[i].y;
+        // if(pInCloud->points[i].y > max_y)
+        //     max_y = pInCloud->points[i].y;
     } 
 
     mean_x /= n;
@@ -369,7 +366,7 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
     // Vector4d final_state= m_pKF->getState();
     // std::cout<<"kf结束后k,b: (" <<final_state[0]<<" , "<<final_state[1]<<")"<<std::endl;
     
-    for(double y = 0; y <= 3; y += 0.01)
+    for(double y = 0; y <= 5; y += 0.01)
     // for(double y = min_y; y <= max_y; y += 0.01)
     {
         double x = (y-b) / k;  //原来正常的
@@ -687,4 +684,5 @@ PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::
 
 
    return pResultCurve;
+}
 }

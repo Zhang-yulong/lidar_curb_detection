@@ -1,6 +1,7 @@
 #include "ReadYamlFile.h"
 
-
+namespace Lidar_Curb_Dedection
+{
 
 YamlReader::YamlReader(const std::string& configFilePath) 
     : m_sConfigFilePath(configFilePath) 
@@ -9,7 +10,7 @@ YamlReader::YamlReader(const std::string& configFilePath)
 }
 
 
-bool YamlReader::LoadConfig(Config& config) 
+bool YamlReader::LoadConfig(STR_CONFIG& config) 
 {
     FileStorage fs(m_sConfigFilePath, FileStorage::READ); // 打开文件以读取
 
@@ -26,6 +27,7 @@ bool YamlReader::LoadConfig(Config& config)
     config.verticalUpperAngle   = (int)fs["Lidar"]["verticalUpperAngle"];
     config.verticalLowerAngle   = (int)fs["Lidar"]["verticalLowerAngle"];
     config.scanRings            = (int)fs["Lidar"]["scanRings"];
+    config.pathTolidarTransformConfig = (int)fs["Lidar"]["pathTolidarTransformConfig"];
 
     // 读取道路
     config.leftXMin             = (float)fs["Road"]["leftXMin"];
@@ -81,6 +83,7 @@ bool YamlReader::LoadConfig(Config& config)
     config.kMax         = (float)fs["RANSAC"]["kMax"];
 
     // 读取滑窗滤波
+    config.isRunningFilter  = (int)fs["SlideWindow"]["isRunningFilter"];  
     config.slideWindowCount = (int)fs["SlideWindow"]["slideWindowCount"];
 
     // 读取模式
@@ -88,6 +91,9 @@ bool YamlReader::LoadConfig(Config& config)
     config.pcapRunningModel = (int)fs["Model"]["pcapRunningModel"];
     config.pcdRunningModel  = (int)fs["Model"]["pcdRunningModel"];
     config.pcdPath          = (std::string)fs["Model"]["pcdPath"];
+
+    config.openGroudViewer   = (int)fs["Model"]["openGroudViewer"];
+    config.openClusterViewer = (int)fs["Model"]["openClusterViewer"];
 
     // 读取Viewer
     config.projectionModel  = (int)fs["Viewer"]["projectionModel"];
@@ -103,4 +109,6 @@ bool YamlReader::LoadConfig(Config& config)
 
     fs.release(); // 释放文件
     return true;
+}
+
 }

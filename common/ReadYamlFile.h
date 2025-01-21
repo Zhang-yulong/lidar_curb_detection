@@ -7,9 +7,11 @@
 
 using namespace cv;
 
-struct Config {
-    
+namespace Lidar_Curb_Dedection
+{
 
+struct STR_CONFIG{
+    
     // Lidar
     std::string selfComputerIP; 
     int msopPort;
@@ -18,6 +20,7 @@ struct Config {
     int verticalUpperAngle;
     int verticalLowerAngle;
     int scanRings;
+    int pathTolidarTransformConfig;
 
     // Road
     float leftXMin;
@@ -82,6 +85,9 @@ struct Config {
     int pcdRunningModel;
     std::string pcdPath;
 
+    int openGroudViewer;
+    int openClusterViewer;
+
     // Viewer
     int projectionModel;
     int savePictureModel;
@@ -102,11 +108,12 @@ public:
     YamlReader(const std::string& configFilePath);
       
     // 从配置文件中加载参数
-    bool LoadConfig(Config& config);
+    bool LoadConfig(STR_CONFIG& config);
 
 private:
     std::string m_sConfigFilePath; // 配置文件路径
 };
 
+}
 
 #endif

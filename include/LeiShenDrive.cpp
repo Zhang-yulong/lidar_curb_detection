@@ -1,76 +1,42 @@
 #include "LeiShenDrive.h"
+#include "pcl/filters/radius_outlier_removal.h"
 
+namespace Lidar_Curb_Dedection
+{
 std::string CH64w; 
 std::string LS128;
 
 
-// boost::shared_ptr<pcl::visualization::PCLVisualizer> plane_viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-
-#if 0
 LeiShenDrive::LeiShenDrive(){
 
     m_pGetLidarData = nullptr;
 	m_pLidarCurbDectection = nullptr;
 }
-#endif
 
-LeiShenDrive::LeiShenDrive(Config & config){
+
+LeiShenDrive::LeiShenDrive(const STR_CONFIG &config, const STR_ALL_LIDAR_TRANSFORM_CONFIG_INFO &allLidarTransInfo){
 
     m_pGetLidarData = nullptr;
 	m_pLidarCurbDectection = nullptr;
 	m_stLSConfig = config;
-	
+	m_strAllLidarTransfromInfo = allLidarTransInfo;
 }
 
 
 LeiShenDrive::~LeiShenDrive(){
+
 	m_pGetLidarData->LidarStop();
+	delete(m_pLidarCurbDectection);
 }
 
-#if 1
-void LeiShenDrive::Init(std::string ComputerIP, int MsopPort, int DifopPort, const std::string LidarType, int Number){
 
-	m_sComputerIP = ComputerIP;
-    m_iMsopPort = MsopPort;
-    m_iDifopPort = DifopPort;
-    m_sLeiShenType = LidarType;
+void LeiShenDrive::Free(){
 
-
-    if(m_sLeiShenType == "LS128")
-    	m_pGetLidarData = new GetLidarData_LS128;
-    else if(m_sLeiShenType == "CH64w"){
-		m_pGetLidarData = new GetLidarData_CH64w();
-		m_pLidarCurbDectection = new LidarCurbDectection(0.05, -25, 15, 128);
-	}
-        
-    
-    if(m_pGetLidarData == nullptr){
-        printf("m_pGetLidarData = nullptr \r\n");
-        return;
-    }
-
-// Fun fun = std::bind(&LeiShenDrive::callBackFunction, this, std::placeholders::_1, std::placeholders::_2);  //这种错误
-    fun = std::bind(&LeiShenDrive::CallBackFunction, this, std::placeholders::_1, std::placeholders::_2);
-
-    m_pGetLidarData->setCallbackFunction(&fun);
-
-    m_pGetLidarData->LidarStar();
-
-    // std::thread m_DataSockT(&getDataSock); //不能够将类成员变量函数作为普通函数指针使用。
-	std::thread m_DataSockT(&LeiShenDrive::GetDataSock,this);
-	m_DataSockT.detach();
-
-	// std::thread m_DevSockT(&getDevSock); //不能够将类成员变量函数作为普通函数指针使用。
-	std::thread m_DevSockT(&LeiShenDrive::GetDevSock,this);
-	m_DevSockT.detach();
-
-
+    m_pGetLidarData->LidarStop();
 }
-#endif
 
 
 void LeiShenDrive::Init(){
-
 
 	m_sComputerIP = m_stLSConfig.selfComputerIP;
     m_iMsopPort = m_stLSConfig.msopPort;
@@ -81,7 +47,7 @@ void LeiShenDrive::Init(){
    	if(m_sLeiShenType == "CH64w"){
 
 		m_pGetLidarData = new GetLidarData_CH64w();
-
+		// m_pGetLidarData = GetLidarData_CH64w*;
 		// m_pLidarCurbDectection = new LidarCurbDectection(0.05, -25, 15, 128);
 		m_pLidarCurbDectection = new LidarCurbDectection(m_stLSConfig);
 	}
@@ -138,19 +104,19 @@ void LeiShenDrive::SavePcd(const PointCloud2Intensity::Ptr &InputCloud, const un
   	InputCloud->width = 1;
   	InputCloud->is_dense = false;
 	static int i = 0;
-	// i++;
-	// if(i % 2 != 0)
-	// {
-	// 	return;
-	// }
+	i++;
+	if(i % 2 != 0)
+	{
+		return;
+	}
 	// struct timeval tNow;
 	// gettimeofday(&tNow, NULL);
 	// unsigned long long ullTimestamp = ((unsigned long long)tNow.tv_sec)*1000 + ((unsigned long long)tNow.tv_usec)/1000;
 	// printf("pop ullTimestamp:%ld\n", ullTimestamp);
-	//gettimeofday(&tStart, NULL);
+	// // gettimeofday(&tStart, NULL);
 	char pchFileName[128];
 	bzero(pchFileName, sizeof (pchFileName));
-	sprintf(pchFileName, "../log/pcd/%lld.pcd", ullTime);
+	sprintf(pchFileName, "/home/zyl/echiev_lidar_curb_detection/log/pcd/%lld.pcd", ullTime);
 	pcl::io::savePCDFileASCII (pchFileName, *InputCloud);
 }
 
@@ -292,20 +258,6 @@ void LeiShenDrive::GetDevSock()
 }
 
 
-#if 0
-pcl::visualization::PCLVisualizer viewer("3d viewer");
-void LeiShenDrive::ShowPointCloud(const PointCloud2Intensity::Ptr &PointCloud)
-{
-	pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZI> color(PointCloud, 255, 255, 255);
-    viewer.removeAllPointClouds();
-    viewer.addPointCloud<pcl::PointXYZI> (PointCloud, color, "Cloud"); 
-    viewer.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "Cloud");
-    viewer.addCoordinateSystem (1.0);      
-    viewer.spinOnce(1);
-}
-#endif
-
-
 void LeiShenDrive::VoxelGridProcess(PointCloud2Intensity::Ptr &pOutputCloud){
 
 	pcl::VoxelGrid<pcl::PointXYZI> sor;           	//创建滤波对象
@@ -320,59 +272,55 @@ void LeiShenDrive::VoxelGridProcess(PointCloud2Intensity::Ptr &pOutputCloud){
 
 void LeiShenDrive::PointCloudTransform(std::vector<MuchLidarData> vTmpLidarData, PointCloud2Intensity::Ptr &pOutputCloud)
 {
-	float fAngle_ToMainLidar = strLidarConfig_ToMainLidar->flidar2imu_angle;
-	float fRad_ToMainLidar = (fAngle_ToMainLidar * M_PI) / 180;
+	Eigen::Matrix4f R_ToMainLidar = m_strAllLidarTransfromInfo.toMainLidarInfo.transformMartix;
+	float fRad_ToMainLidar = m_strAllLidarTransfromInfo.toMainLidarInfo.rad;
+	float fcos_ToMainLidar = cos(fRad_ToMainLidar);
+	float fsin_ToMainLidar = sin(fRad_ToMainLidar);
 
-	Eigen::Matrix4f R_ToMainLidar;
-	R_ToMainLidar << strLidarConfig_ToMainLidar->fComBinePara[0], strLidarConfig_ToMainLidar->fComBinePara[1], strLidarConfig_ToMainLidar->fComBinePara[2], strLidarConfig_ToMainLidar->fComBinePara[3],
-			strLidarConfig_ToMainLidar->fComBinePara[4], strLidarConfig_ToMainLidar->fComBinePara[5], strLidarConfig_ToMainLidar->fComBinePara[6], strLidarConfig_ToMainLidar->fComBinePara[7],
-			strLidarConfig_ToMainLidar->fComBinePara[8], strLidarConfig_ToMainLidar->fComBinePara[9],	strLidarConfig_ToMainLidar->fComBinePara[10], strLidarConfig_ToMainLidar->fComBinePara[11],
-			0, 0, 0, 1;
-
-
-	float fAngle_ToCar = strLidarConfig_ToCar->flidar2imu_angle;
-	float fRad_ToCar = (fAngle_ToCar * M_PI) / 180;
-	float fX_ToCar = strLidarConfig_ToCar->flidar2imu_X;
-	float fY_ToCar = strLidarConfig_ToCar->flidar2imu_Y;
-
-	Eigen::Matrix4f R_ToCar;
-	R_ToCar << strLidarConfig_ToCar->fComBinePara[0], strLidarConfig_ToCar->fComBinePara[1], strLidarConfig_ToCar->fComBinePara[2], strLidarConfig_ToCar->fComBinePara[3],
-			strLidarConfig_ToCar->fComBinePara[4], strLidarConfig_ToCar->fComBinePara[5], strLidarConfig_ToCar->fComBinePara[6], strLidarConfig_ToCar->fComBinePara[7],
-			strLidarConfig_ToCar->fComBinePara[8], strLidarConfig_ToCar->fComBinePara[9], strLidarConfig_ToCar->fComBinePara[10], strLidarConfig_ToCar->fComBinePara[11],
-			strLidarConfig_ToCar->fComBinePara[12], strLidarConfig_ToCar->fComBinePara[13], strLidarConfig_ToCar->fComBinePara[14], strLidarConfig_ToCar->fComBinePara[15];
-
-
+	Eigen::Matrix4f R_ToCar = m_strAllLidarTransfromInfo.toCarInfo.transformMartix; 
+	float fRad_ToCar = m_strAllLidarTransfromInfo.toCarInfo.rad;
 
 	for(int i = 0; i < vTmpLidarData.size(); i++)
 	{
+		// std::cout<<"-------------"<<std::endl;
 		Eigen::Matrix<float,4,1> x1_Init, x2_ToMainLidar, x3_ToCar, x4_Final;
 		x1_Init << vTmpLidarData[i].X, vTmpLidarData[i].Y, vTmpLidarData[i].Z, 1;
 		x2_ToMainLidar = R_ToMainLidar * x1_Init;
-
 		pcl::PointXYZI tmppoint_ToMainLidar;
 		tmppoint_ToMainLidar.x =  cos(fRad_ToMainLidar) * x2_ToMainLidar(0) + sin(fRad_ToMainLidar) * x2_ToMainLidar(1) ;
 		tmppoint_ToMainLidar.y = -sin(fRad_ToMainLidar) * x2_ToMainLidar(0) + cos(fRad_ToMainLidar) * x2_ToMainLidar(1) ;
 		tmppoint_ToMainLidar.z = x2_ToMainLidar(2) ;
 		tmppoint_ToMainLidar.intensity = vTmpLidarData[i].Intensity;
 
+		// pcl::PointXYZI tmppoint_ToMainLidar;
+		// tmppoint_ToMainLidar.x =  cos(fRad_ToMainLidar) * x1_Init(0) + sin(fRad_ToMainLidar) * x1_Init(1) +  R_ToMainLidar();
+		// tmppoint_ToMainLidar.y = -sin(fRad_ToMainLidar) * x1_Init(0) + cos(fRad_ToMainLidar) * x1_Init(1) +  ;
+		// tmppoint_ToMainLidar.z = x1_Init(2) ;
+		// tmppoint_ToMainLidar.intensity = vTmpLidarData[i].Intensity;
+
+
+
+
 		x3_ToCar << tmppoint_ToMainLidar.x, tmppoint_ToMainLidar.y, tmppoint_ToMainLidar.z, 1;
 		x4_Final = R_ToCar * x3_ToCar;
 
+
+		// x4_Final = R_ToCar * R_ToMainLidar * x1_Init;
+		// x4_Final = R_ToMainLidar * x1_Init;
+		
 		pcl::PointXYZI tmppoint_ToCar;
-		tmppoint_ToCar.x =  cos(fRad_ToCar) * x4_Final(0) + sin(fRad_ToCar) * x4_Final(1) ;
-		tmppoint_ToCar.y = -sin(fRad_ToCar) * x4_Final(0) + cos(fRad_ToCar) * x4_Final(1) ;
-		tmppoint_ToCar.z = x4_Final(2) ;
+		tmppoint_ToCar.x = x4_Final(0);
+		tmppoint_ToCar.y = x4_Final(1);
+		tmppoint_ToCar.z = x4_Final(2);
 		tmppoint_ToCar.intensity = vTmpLidarData[i].Intensity;
 
-		pOutputCloud->points.push_back(tmppoint_ToMainLidar);
+		pOutputCloud->points.push_back(tmppoint_ToCar);
 	}
 
-	
 	pOutputCloud->width    = pOutputCloud->points.size();
 	pOutputCloud->height   = 1;
 	pOutputCloud->is_dense = false;
-	//LOG_RAW("!!!!!point size = %d\n", pOutputCloud->points.size());
-	//pcl::io::savePCDFileASCII ("1.pcd", *pOutputCloud);
+
 }
 
 
@@ -426,10 +374,22 @@ unsigned long long LeiShenDrive::GetPointCloudFromPcd(PointCloud2Intensity::Ptr 
 		pOutputCloud->points.push_back(temp);
     }
 
+	// ApplyRadiusOutlierFilter(pOutputCloud);
+
 	return ullTimestamp;
 
 }
 
+
+void LeiShenDrive::ApplyRadiusOutlierFilter(PointCloud2Intensity::Ptr &InputCloud){
+
+	pcl::RadiusOutlierRemoval<pcl::PointXYZI> radiusOutlierFilter;
+	
+	radiusOutlierFilter.setInputCloud(InputCloud);
+	radiusOutlierFilter.setRadiusSearch(0.05);
+	radiusOutlierFilter.setMinNeighborsInRadius(8);
+	radiusOutlierFilter.filter(*InputCloud);
+}
 
 
 void LeiShenDrive::Start(){
@@ -443,11 +403,32 @@ void LeiShenDrive::Start(){
 
 		PointCloud2Intensity::Ptr pPointCloud(new PointCloud2Intensity);
 
-//		pcl_viewer = std::make_shared< pcl::visualization::PCLVisualizer>("LSPointCloudViewer");	//标题栏定义一个名称"LSPointCloudViewer"
-//		pcl_viewer->setBackgroundColor(0.0, 0.0, 0.0);	//黑色背景
-//		pcl_viewer->addCoordinateSystem(1.0);	//显示坐标系统方向，可以通过使用X（红色）、Y（绿色）、Z（蓝色）圆柱体代表坐标轴的显示方式来解决，圆柱体的大小通过scale参数控制
-//		pcl_viewer->addPointCloud<pcl::PointXYZI>(pPointCloud, "lslidar");	// 显示点云，
-//		pcl_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "lslidar"); // 显示自定义颜色数据，每个点云的RGB颜色字段
+		if(bOnlineModel && !bPcapModel && !bPcdModel){
+			LOG_RAW("在线模式\n");
+		}
+		else if(bPcapModel && !bOnlineModel && !bPcdModel){
+			LOG_RAW("pcap读取模式\n");
+			pcl_viewer = std::make_shared<pcl::visualization::PCLVisualizer>("LSPointCloudViewer");	//标题栏定义一个名称"LSPointCloudViewer"
+			pcl_viewer->setBackgroundColor(0.0, 0.0, 0.0);	//黑色背景
+			pcl_viewer->addCoordinateSystem(1.0);	//显示坐标系统方向，可以通过使用X（红色）、Y（绿色）、Z（蓝色）圆柱体代表坐标轴的显示方式来解决，圆柱体的大小通过scale参数控制
+			pcl_viewer->addPointCloud<pcl::PointXYZI>(pPointCloud, "lslidar");	// 显示点云，
+			pcl_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "lslidar"); // 显示自定义颜色数据，每个点云的RGB颜色字段
+
+		}
+		else if(bPcdModel && !bPcapModel && !bOnlineModel){
+			LOG_RAW("pcd读取模式\n");
+		}
+		else{
+			LOG_RAW("模式未选择\n");
+		}
+
+
+		// pcl_viewer = std::make_shared< pcl::visualization::PCLVisualizer>("LSPointCloudViewer");	//标题栏定义一个名称"LSPointCloudViewer"
+		// pcl_viewer->setBackgroundColor(0.0, 0.0, 0.0);	//黑色背景
+		// pcl_viewer->addCoordinateSystem(1.0);	//显示坐标系统方向，可以通过使用X（红色）、Y（绿色）、Z（蓝色）圆柱体代表坐标轴的显示方式来解决，圆柱体的大小通过scale参数控制
+		// pcl_viewer->addPointCloud<pcl::PointXYZI>(pPointCloud, "lslidar");	// 显示点云，
+		// pcl_viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, "lslidar"); // 显示自定义颜色数据，每个点云的RGB颜色字段
+
 
 		if(bPcdModel)
 		{
@@ -459,57 +440,45 @@ void LeiShenDrive::Start(){
 //			pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
 			// // pcl_viewer->spinOnce();
 	
-			VoxelGridProcess(pPointCloud);
+			// VoxelGridProcess(pPointCloud);
 			
 			m_pLidarCurbDectection->GroudSegmentationStart(pPointCloud, m_ullUseTimeStamp);
 		}	
+
+
 
         while (1)
         {
 			if(!m_vLidarData.empty())
 			{	
 				printf("------------\n");//一帧点云，有m_vLidarData_temp.size()个点
-				printf("进来的m_vLidarData size: %d \n", m_vLidarData.size());
+				printf("进来的m_vLidarData size: %ld \n", m_vLidarData.size());
 				pPointCloud->points.clear();
 
 				/*	没有加入周洋代码前的正常运行代码，pcap回放*/
 				if(bPcapModel){
 					
-					// std::vector<MuchLidarData> m_vLidarData_temp;
+					// std::vector<MuchLidarData> m_vLidarData_offline;
 					// {
 					// 	std::lock_guard<std::mutex> lock(m_DataMutex);
-					// 	m_vLidarData_temp = m_vLidarData;
+					// 	m_vLidarData_offline = m_vLidarData;
 					// 	m_ullUseTimeStamp = m_ullCatchTimeStamp;
 					// }
 
 					m_DataMutex.lock();
-					std::vector<MuchLidarData> m_vLidarData_temp;
-					m_vLidarData_temp = m_vLidarData;
+					std::vector<MuchLidarData> m_vLidarData_offline;
+					m_vLidarData_offline = m_vLidarData;
 					m_ullUseTimeStamp = m_ullCatchTimeStamp;
 					m_DataMutex.unlock();
 
-					//	去掉点云中无效点
-					for(u_int m_FF = 0; m_FF < m_vLidarData_temp.size(); m_FF++)
-					{
-						// skip zero valued points
-						if( (m_vLidarData_temp[m_FF].X * m_vLidarData_temp[m_FF].X) +
-							(m_vLidarData_temp[m_FF].Y * m_vLidarData_temp[m_FF].Y) +
-							(m_vLidarData_temp[m_FF].Z * m_vLidarData_temp[m_FF].Z) < 0.0001)
-								{continue;}
-							
-						pcl::PointXYZI tmppoint;
-						tmppoint.x = m_vLidarData_temp[m_FF].X;
-						tmppoint.y = m_vLidarData_temp[m_FF].Y;
-						tmppoint.z = m_vLidarData_temp[m_FF].Z;
-						tmppoint.intensity = m_vLidarData_temp[m_FF].Intensity;
-						
-						if(m_FF>0){
+					PointCloudTransform(m_vLidarData_offline, pPointCloud);
 
-						// std::cout<<"第"<<m_FF<<"个"<< ", x: "<< tmppoint.x<<", y: "<<tmppoint.y<<", z: "<<tmppoint.z<<", tmppoint.intensity: "<<tmppoint.intensity<<std::endl;
-						// std::cout<<"前一个点"<<m_FF-1<<"个"<< ", x: "<< m_vLidarData_temp[m_FF-1].X<<", y: "<<m_vLidarData_temp[m_FF-1].Y<<", z: "<<m_vLidarData_temp[m_FF-1].Z<<std::endl;
-						}
-						pPointCloud->points.push_back(tmppoint);
-					}
+					// ApplyRadiusOutlierFilter(pPointCloud);
+
+					pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity");
+					pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
+					pcl_viewer->spinOnce();
+
 				}
 				
 				/*	现场小车跑*/
@@ -525,13 +494,13 @@ void LeiShenDrive::Start(){
 				}
 				
 
-//				pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity");
-//				pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
-//				pcl_viewer->spinOnce();
+				// pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pPointCloud, "intensity");
+				// pcl_viewer->updatePointCloud<pcl::PointXYZI>(pPointCloud, point_color_handle, "lslidar");
+				// pcl_viewer->spinOnce();
 				
 		
 				/*先使用体素滤波向下采样处理点云*/
-				VoxelGridProcess(pPointCloud);
+				// VoxelGridProcess(pPointCloud);
 				
 				m_pLidarCurbDectection->GroudSegmentationStart(pPointCloud, m_ullUseTimeStamp);
 
@@ -557,7 +526,6 @@ void LeiShenDrive::Start(){
 			}
 			
         }
-        
     });
     thread1.detach();
 }
@@ -565,7 +533,5 @@ void LeiShenDrive::Start(){
 
 
 
-void LeiShenDrive::Free(){
 
-    m_pGetLidarData->LidarStop();
 }

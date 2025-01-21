@@ -4,6 +4,8 @@
 #include <iostream>
 #include <stdlib.h>
 
+#include <pcl/filters//radius_outlier_removal.h>
+
 #include "BaseDrive.h"
 #include "LidarCurbDectection.h"
 
@@ -20,23 +22,21 @@
 
 # define pcl_isfinite(x) std::isfinite(x)
 
-class GetLidarData;
-class LidarCurbDectection;
 
-extern STR_LIDAR_CONFIG *strLidarConfig_ToMainLidar;
-extern STR_LIDAR_CONFIG *strLidarConfig_ToCar;
+namespace Lidar_Curb_Dedection
+{
 
-class LeiShenDrive:public BaseDrive
+
+class LeiShenDrive : public BaseDrive
 {
 public:
     LeiShenDrive();
-    LeiShenDrive(Config & config);
+    LeiShenDrive(const STR_CONFIG &config, const STR_ALL_LIDAR_TRANSFORM_CONFIG_INFO &allLidarTransInfo);
     ~LeiShenDrive();
 
     void Start();
     
     void Init();
-    void Init(std::string ComputerIP, int MsopPort, int DifopPort, const std::string LidarType, int Number);
     
     void Free(); 
 
@@ -54,8 +54,6 @@ private:
     void GetDevSock();
     void GetDataSock();
 
-    void ShowPointCloud(const PointCloud2Intensity::Ptr &PointCloud);
-
     void SavePcd(const PointCloud2Intensity::Ptr &InputCloud, const unsigned long long &ullTime);
 
     void PointCloudTransform(std::vector<MuchLidarData> vTmpLidarData, PointCloud2Intensity::Ptr &pOutputCloud);
@@ -63,6 +61,8 @@ private:
     unsigned long long GetPointCloudFromPcd(PointCloud2Intensity::Ptr &pOutputCloud);
 
     void VoxelGridProcess(PointCloud2Intensity::Ptr &pOutputCloud);
+
+    void ApplyRadiusOutlierFilter( PointCloud2Intensity::Ptr &InputCloud);
 
 private: 
     unsigned long long m_ullCatchTimeStamp;
@@ -75,10 +75,11 @@ private:
     std::string m_sLeiShenType;
 
     Fun fun;
-    GetLidarData *m_pGetLidarData;
+    // GetLidarData *m_pGetLidarData;  //没有命名空间时使用
+    GetLidarData_CH64w *m_pGetLidarData;    //使用了命名空间时使用
     LidarCurbDectection *m_pLidarCurbDectection;
-    Config m_stLSConfig;
-
+    STR_CONFIG m_stLSConfig;
+    STR_ALL_LIDAR_TRANSFORM_CONFIG_INFO m_strAllLidarTransfromInfo;
     
     std::vector<MuchLidarData> m_vLidarData;
     std::mutex m_DataMutex;
@@ -89,6 +90,6 @@ private:
     
 
 };
-
+}
 
 #endif

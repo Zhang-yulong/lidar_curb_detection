@@ -1,5 +1,6 @@
 #include "kalman.h"
-
+namespace Lidar_Curb_Dedection
+{
 LineKalmanFilter::LineKalmanFilter(double k_min, double k_max) : m_kmin(k_min),m_kmax(k_max) 
 {
     // 初始化状态向量 [k, b, dot_k, dot_b]
@@ -85,4 +86,6 @@ void LineKalmanFilter::update(const Vector2d& z) {
 
 Vector4d LineKalmanFilter::getState() {
     return m_x;
+}
+
 }

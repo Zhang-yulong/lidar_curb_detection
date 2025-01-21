@@ -11,6 +11,8 @@
 // using namespace std;
 using namespace Eigen;
 
+namespace Lidar_Curb_Dedection
+{
 class LineKalmanFilter {
 public:
     LineKalmanFilter(double k_min,double k_max);
@@ -43,5 +45,5 @@ private:
     unsigned long long m_LasterUllTime;
     // unsigned long long m_CurrentUllTime;
 };
-
+}
 #endif

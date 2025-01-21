@@ -1,32 +1,28 @@
 #include <iostream>
 #include <string> 
-
+#include <memory>
 #include "LeiShenDrive.h"
 
 #include "ulog_api.h"
 
 #define CvLane_MC_PORT 9139
 
+// #define LOG_CFG_FILE_PATH "/home/zyl/echiev_lidar_curb_detection/config/ulog.cfg"
 #define LOG_CFG_FILE_PATH "/etc/ulog/curb/config/ulog.cfg"
 
+using namespace Lidar_Curb_Dedection;
 
+// std::string Yaml_Path = "/home/zyl/echiev_lidar_curb_detection/config/debug_config.yaml";
 std::string Yaml_Path = "/etc/echiev/bin/debug_config.yaml";
 
-// #include "ConnectTools.h"
-// using namespace pcl::visualization;
 
-STR_LIDAR_CONFIG *strLidarConfig_ToMainLidar = (STR_LIDAR_CONFIG *)malloc(sizeof(STR_LIDAR_CONFIG));
-STR_LIDAR_CONFIG *strLidarConfig_ToCar = (STR_LIDAR_CONFIG *)malloc(sizeof(STR_LIDAR_CONFIG));
+STR_LIDAR_CONFIG *strToMainLidarConfig = (STR_LIDAR_CONFIG *)malloc(sizeof(STR_LIDAR_CONFIG));
+STR_LIDAR_CONFIG *strToCarConfig = (STR_LIDAR_CONFIG *)malloc(sizeof(STR_LIDAR_CONFIG));
 
 STR_FUSIONLOC g_strFusionLocation;
 pthread_mutex_t g_SpeedMutex;
 pthread_mutex_t g_ThreadMutex;
 float  g_fSpeed = 0.0;
-
-
-class YamlReader;
-
-
 
 
 
@@ -79,35 +75,59 @@ void fusionLoc_set(unsigned char *pData, int Len)
 
 
 
-int Comm_Init(void)
+int CommInit(const STR_CONFIG &config)
 {
-	const char *strConfigPath_ToMainLidar = "/etc/echiev/lidar/lsCH64w_front/lidar.cfg";
-	if(NULL == strLidarConfig_ToMainLidar)
-	{
-		printf("strLidarConfig_ToMainLidar malloc error\n");
+	int iRet_1, iRet_2;
+
+	if(NULL == strToMainLidarConfig){
+		LOG_RAW("strToMainLidarConfig malloc error\n");
 		return -1;
 	}
-	int iRet_1 = readConfigFile(strLidarConfig_ToMainLidar, strConfigPath_ToMainLidar);
-	if(1 == iRet_1)
-	{
-		printf("read ToMainLidar Config File error\n");
+	if(NULL == strToCarConfig){
+		LOG_RAW("strToCarConfig malloc error\n");
+		return -1;
+	}
+
+
+	if(config.pathTolidarTransformConfig == 0){
+		const char *PathToMainLidarConfig = "/home/zyl/echiev_lidar_curb_detection/config/小车11上的雷达配置文件/lsCH64w_front/lidar.cfg";
+		const char *PathToCarConfig = "/home/zyl/echiev_lidar_curb_detection/config/小车11上的雷达配置文件/lidar.cfg";
+		iRet_1 = readConfigFile(strToMainLidarConfig, PathToMainLidarConfig);
+		iRet_2 = readConfigFile(strToCarConfig, PathToCarConfig);
+	}
+	else if(config.pathTolidarTransformConfig == 1){
+		const char *PathToMainLidarConfig = "/etc/echiev/lidar/lsCH64w_front/lidar.cfg";
+		const char *PathToCarConfig = "/etc/echiev/lidar/lidar.cfg";
+		iRet_1 = readConfigFile(strToMainLidarConfig, PathToMainLidarConfig);
+		iRet_2 = readConfigFile(strToCarConfig, PathToCarConfig);
+	}
+	else if(config.pathTolidarTransformConfig == 2){
+		const char *PathToMainLidarConfig = "/home/zyl/echiev_lidar_curb_detection/config/佛山T1上的雷达配置文件/lsCH64w_front/lidar.cfg";
+		const char *PathToCarConfig = "/home/zyl/echiev_lidar_curb_detection/config/佛山T1上的雷达配置文件/lidar.cfg";
+		iRet_1 = readConfigFile(strToMainLidarConfig, PathToMainLidarConfig);
+		iRet_2 = readConfigFile(strToCarConfig, PathToCarConfig);
+	}
+	else if (config.pathTolidarTransformConfig == 3) {
+		const char *PathToMainLidarConfig = "/etc/echiev/lidar/lsCH64w_front/lidar.cfg";
+		const char *PathToCarConfig = "/etc/echiev/lidar/lidar.cfg";
+		iRet_1 = readConfigFile(strToMainLidarConfig, PathToMainLidarConfig);
+		iRet_2 = readConfigFile(strToCarConfig, PathToCarConfig);
+	}
+	else{
+		LOG_RAW("pathTolidarTransformConfig 配置错误 \n");
+		return -1;
+	}	
+
+	if(1 == iRet_1){
+		LOG_RAW("read ToMainLidar Config File error\n");
 		return -1;
 	}
 	else{
 		printf("read ToMainLidar Config File successful\n");
 	}
 
-
-	const char *strConfigPath_ToCar = "/etc/echiev/lidar/lidar.cfg";
-	if(NULL == strLidarConfig_ToCar)
-	{
-		printf("strConfigPath_ToCar malloc error\n");
-		return -1;
-	}
-	int iRet_2 = readConfigFile(strLidarConfig_ToCar, strConfigPath_ToCar);
-	if(1 == iRet_2)
-	{
-		printf("read ToCar Config File error\n");
+	if(1 == iRet_2){
+		LOG_RAW("read ToCar Config File error\n");
 		return -1;
 	}
 	else{
@@ -123,13 +143,13 @@ int Comm_Init(void)
 	*/
 
 	pthread_mutex_init(&g_SpeedMutex, NULL);
-	if(OpenVSpdMCClient(VSPD_MC_PORT, 0) < 0)
-	{
-		printf("OpenVSpdMCClient fail.\n");
+	if(OpenVSpdMCClient(VSPD_MC_PORT, 0) < 0){
+		LOG_RAW("OpenVSpdMCClient fail.\n");
 		return -1;
 	}
-	else
-		{printf("OpenVSpdMCClient successful.\n");}
+	else{
+		printf("OpenVSpdMCClient successful.\n");
+	}
 	vehicle_speed_set_callback(speed_set);
 
 	/*
@@ -142,25 +162,24 @@ int Comm_Init(void)
 	*/
 	
 	pthread_mutex_init(&g_ThreadMutex, NULL);
-	if(OpenfusionLocMCClient(FUSIONLOC_MC_PORT, 0) < 0)
-	{
-		printf("OpenfusionLocMCClient fail.\n");
+	if(OpenfusionLocMCClient(FUSIONLOC_MC_PORT, 0) < 0){
+		LOG_RAW("OpenfusionLocMCClient fail.\n");
 		return -1;
 	}
-	else
-		{printf("OpenfusionLocMCClient successful.\n");}
+	else{
+		printf("OpenfusionLocMCClient successful.\n");
+	}
 	fusionLoc_set_callback(fusionLoc_set);
 
 
-	if(OpenCameraLaneMCServer(CvLane_MC_PORT, CvLane_MC_INTERVAL, 0X01) < 0) 
-	{
-		printf("OpenCameraLaneMCServer fail.\n");
+	if(OpenCameraLaneMCServer(CvLane_MC_PORT, CvLane_MC_INTERVAL, 0X01) < 0){ 
+		LOG_RAW("OpenCameraLaneMCServer fail.\n");
 		return -1;
 	}
-	else
-		{printf("OpenCameraLaneMCServer successful.\n");}
+	else{
+		printf("OpenCameraLaneMCServer successful.\n");
+	}
 
-	
 	return 0;
 }
 
@@ -171,117 +190,89 @@ void Comm_Exit(void)
 	CloseLidarMCClient();
 	ClosefusionLocMCClient();
 	CloseCameraLaneMCServer();
-	// ulog_deinit();
+	ulog_deinit();
+}
+
+
+STR_ALL_LIDAR_TRANSFORM_CONFIG_INFO GetAllTransformConfigInfo(const STR_LIDAR_CONFIG *toMainLidar, const STR_LIDAR_CONFIG *toCar){
+
+	STR_LIDAR_TRANSFORM_CONFIG_INFO toMainLidarInfo, toCarInfo;
+
+	float fAngle_ToMainLidar = toMainLidar->flidar2imu_angle;
+	float fRad_ToMainLidar = (fAngle_ToMainLidar * M_PI) / 180;
+	Eigen::Matrix<float,4,4> R_ToMainLidar;
+	R_ToMainLidar <<	toMainLidar->fComBinePara[0], toMainLidar->fComBinePara[1], toMainLidar->fComBinePara[2], toMainLidar->fComBinePara[3],
+					 	toMainLidar->fComBinePara[4], toMainLidar->fComBinePara[5], toMainLidar->fComBinePara[6], toMainLidar->fComBinePara[7],
+					 	toMainLidar->fComBinePara[8], toMainLidar->fComBinePara[9],	toMainLidar->fComBinePara[10], toMainLidar->fComBinePara[11],
+					 	0, 0, 0, 1;
+	
+	// Eigen::Matrix<float,4,4> R_ToMainLidar = Eigen::Matrix4f::Identity();
+	// R_ToMainLidar(0,0) = cos(fRad_ToMainLidar);
+	// R_ToMainLidar(0,1) = sin(fRad_ToMainLidar);
+	// R_ToMainLidar(0,3) = toMainLidar->fComBinePara[3];
+
+	// R_ToMainLidar(1,0) = -sin(fRad_ToMainLidar);
+	// R_ToMainLidar(1,1) = cos(fRad_ToMainLidar);
+	// R_ToMainLidar(1,3) = toMainLidar->fComBinePara[7];
+	
+	// R_ToMainLidar(2,3) = toMainLidar->fComBinePara[11];
+	
+	std::cout<<"R_ToMainLidar = "<<R_ToMainLidar<<std::endl;
+	toMainLidarInfo.transformMartix = R_ToMainLidar;
+	toMainLidarInfo.rad = fRad_ToMainLidar;
+
+
+	float fAngle_ToCar = toCar->flidar2imu_angle;
+	float fRad_ToCar = (fAngle_ToCar * M_PI) / 180;
+	Eigen::Matrix<float,4,4> R_ToCar = Eigen::Matrix4f::Identity();
+	R_ToCar(0,0) = cos(fRad_ToCar);
+	R_ToCar(0,1) = sin(fRad_ToCar);
+	R_ToCar(0,3) = toCar->fComBinePara[3];
+
+	R_ToCar(1,0) = -sin(fRad_ToCar);
+	R_ToCar(1,1) = cos(fRad_ToCar);
+	R_ToCar(1,3) = toCar->fComBinePara[7];
+	
+	R_ToCar(2,3) = toCar->fComBinePara[11];
+
+	std::cout<<"R_ToCar = "<<R_ToCar<<std::endl; 
+	toCarInfo.transformMartix = R_ToCar;
+	toCarInfo.rad = fRad_ToCar;
+
+	return {toMainLidarInfo, toCarInfo};
 }
 
 
 
 
 
-
-/* 配合ConnectTools.cpp使用
-// GetLidarData *m_GetLidarData;
-// std::mutex m_mutex;
-// std::vector<MuchLidarData> m_LidarData;	
-// std::shared_ptr<pcl::visualization::PCLVisualizer> pcl_viewer;
-// pcl::PointCloud<pcl::PointXYZI>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZI>);
-*/
 int main()
 {
-	
 	ulog_init(LOG_CFG_FILE_PATH);
 
-	Comm_Init();
-
-	Config stOpencvConfig;
+	STR_CONFIG strOpencvConfig;
 	YamlReader *pYamlReader = new YamlReader(Yaml_Path);
-    if (!pYamlReader->LoadConfig(stOpencvConfig)) {
+    if (!pYamlReader->LoadConfig(strOpencvConfig)) {
 		LOG_RAW("debug.yaml加载失败\n");
         return -1; // 如果加载失败，则退出
     }
 
-    // std::string sSelfComputerIP = "192.168.86.70";
-    // int iMsopPort = 2368;
-    // int iDifopPort = 2369;
-    // std::string sLeiShenType = "CH64w";
+	CommInit(strOpencvConfig);
 
-    LeiShenDrive lsDrive(stOpencvConfig);
+
+	STR_ALL_LIDAR_TRANSFORM_CONFIG_INFO strAllLidarTransformInfo = GetAllTransformConfigInfo(strToMainLidarConfig, strToCarConfig);
+
+   	LeiShenDrive lsDrive(strOpencvConfig, strAllLidarTransformInfo);
 	lsDrive.Init();
-    // lsDrive.Init(sSelfComputerIP, iMsopPort, iDifopPort, sLeiShenType, 0);
     lsDrive.Start();
     
-/*	配合ConnectTools.cpp使用
-    m_GetLidarData = new GetLidarData_CH64w;
-
-    A m_a;
-	Fun fun = std::bind(&A::callbackFunction, m_a, std::placeholders::_1, std::placeholders::_2);
-
-	m_GetLidarData->setCallbackFunction(&fun);				//设置回调函数
-	m_GetLidarData->LidarStar();							//开始解析雷达数据
-
-    std::thread m_DataSockT(getDataSock, sSelfComputerIP ,iMsopPort, iDifopPort);
-	m_DataSockT.detach();
-
-	std::thread m_DevSockT(getDevSock, sSelfComputerIP ,iMsopPort, iDifopPort);
-	m_DevSockT.detach();
-
-    //pcd展示
-	// pcl_viewer = std::make_shared<pcl::visualization::PCLVisualizer>("LSPointCloudViewer");
-	// pcl_viewer->setBackgroundColor(0.0, 0.0, 0.0);
-	// pcl_viewer->addCoordinateSystem(1.0);
-	// pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_pointcloud(new pcl::PointCloud<pcl::PointXYZI>);
-	// pcl_viewer->addPointCloud<pcl::PointXYZI>(pcl_pointcloud, "lslidar");	// 显示点云，
-	// pcl_viewer->setPointCloudRenderingProperties(PCL_VISUALIZER_POINT_SIZE, 2, "lslidar"); // 设置点云大小
-*/
 
     while(1){
-		/*配合ConnectTools.cpp使用
-        printf("m_LidarData size: %ld \n", m_LidarData.size());
-		if (!m_LidarData.empty())
-		{
-			m_mutex.lock();
-			std::vector<MuchLidarData> m_LidarData_temp;
-			m_LidarData_temp = m_LidarData;
-			m_LidarData.clear();
-			m_mutex.unlock();
-	
-			pcl_pointcloud->points.clear();
-
-			cloud->points.clear();
-
-			for (u_int m_FF = 0; m_FF < m_LidarData_temp.size(); m_FF++)
-			{
-				pcl::PointXYZI tmppoint;
-				
-				tmppoint.x = m_LidarData_temp[m_FF].X;
-				tmppoint.y = m_LidarData_temp[m_FF].Y;
-				tmppoint.z = m_LidarData_temp[m_FF].Z;
-				tmppoint.intensity = m_LidarData_temp[m_FF].Intensity;
-				cloud->points.push_back(tmppoint);
-				
-				pcl_pointcloud->points.push_back(tmppoint);
-            }
-            ShowPointCloud(cloud);
-
-            pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> point_color_handle(pcl_pointcloud, "intensity"); 
-			pcl_viewer->updatePointCloud<pcl::PointXYZI>(pcl_pointcloud, point_color_handle, "lslidar");
-			pcl_viewer->spinOnce(); 
-
-        }
-        else
-		{
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-		*/
-
 		
     }
 
     lsDrive.Free();
 	Comm_Exit();
-/*	配合ConnectTools.cpp使用
-	
-    m_GetLidarData->LidarStop();
-*/
+
     return 0;
 }

@@ -1,6 +1,7 @@
 #ifndef LIDARCURBDECTECTION_H
 #define LIDARCURBDECTECTION_H
 
+#include <pcl/common/common.h>
 #include <pcl/PointIndices.h>
 #include <pcl/ModelCoefficients.h>  // 模型系数的定义
 #include <pcl/sample_consensus/method_types.h> // 包含用于采样一致性算法的不同方法的定义，如RANSAC、MSAC等
@@ -24,7 +25,9 @@
 #include <time.h>
 #include <condition_variable>
 #include <queue>
-// #include "ConnectTools.h"
+#include <thread>
+#include <chrono>
+
 #include "Type.h"
 #include "CurveFitting.h"
 #include "Viewer.h"
@@ -32,16 +35,16 @@
 #include "struct_typedef.h"
 #include "communication.h"
 
-class CurveFitting;
-class Viewer;
+namespace Lidar_Curb_Dedection
+{
 
+class LidarCurbDectection;
 
 struct LineInfo {
     cv::Vec4f lineParams; // 直线参数 (vx, vy, x0, y0)
     double length;        // 直线长度
     double avg_x;
 };
-
 
 struct PolarLine{
     double rho;     //距原点的距离
@@ -54,15 +57,40 @@ struct LineRunningInfo{
     PointCloud2Intensity::Ptr linePointCloud;
 };
 
+// 计算直线的斜率和截距
+struct HoughSPLineInfo {
+    double slope;  // 斜率
+    double intercept;  // 截距
+    cv::Vec4i line;  // 原始直线段
+};
+
+struct Line {
+    cv::Point2f start;
+    cv::Point2f end;
+    // float slope;
+    float angle;
+    float length;
+
+    // 构造函数
+    Line(const cv::Vec4i& line) {
+        // std::cout<<"Line 构造"<<std::endl;
+        start = cv::Point2f(line[0], line[1]);
+        end = cv::Point2f(line[2], line[3]);
+       
+        // slope = (end.x - start.x) != 0 ? (end.y - start.y) / (end.x - start.x) : std::numeric_limits<float>::infinity();
+        // 使用 atan2 计算角度，避免斜率除以零的问题
+        angle = std::abs(std::atan2(end.y - start.y, end.x - start.x))* 180 /M_PI;
+        length = std::sqrt((end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y));
+    }
+};
+
+
 
 class LidarCurbDectection{
 
 public:
 
-    LidarCurbDectection(const float fGroudSegmentationThreshold, const float fLidarVerticalLowerAngle, const float fLidarVerticalUpperAngle,
-                        const int iLidarScanRings);
-
-    LidarCurbDectection(Config & config);
+    LidarCurbDectection(const STR_CONFIG & config);
     
     ~LidarCurbDectection();
 
@@ -113,6 +141,14 @@ private:
     bool isLineAngleValid(const cv::Vec4f& line, double maxAngle);
     void normalizeLineABC(double &A, double &B, double &C);    
 
+    std::vector<std::vector<Line>> clusterLinesBySlope(const std::vector<Line>& lines, float slope_threshold);
+    std::vector<Line> findLongestCluster(const std::vector<std::vector<Line>>& clusters);
+    double calculateSlope(const cv::Vec4i& line);
+    double calculateIntercept(const cv::Vec4i& line, double slope);
+    std::vector<std::vector<HoughSPLineInfo>> clusterLines(const std::vector<HoughSPLineInfo>& lines, double slope_threshold, double distance_threshold);
+    cv::Vec4f fitLineToCluster(const std::vector<HoughSPLineInfo>& cluster);
+    float calculateLength(const cv::Point& start, const cv::Point& end);
+    
 
     cv::Point2f computeCentroid(const std::vector<cv::Point>& contour);
     void splitContoursByCentroid(const std::vector<cv::Point>& contour, 
@@ -143,7 +179,6 @@ private:
     PointCloud2Intensity::Ptr getCloserRightCluster(const std::vector<PointCloud2Intensity::Ptr>& clusters);
     PointCloud2Intensity::Ptr getCloserLeftCluster(const std::vector<PointCloud2Intensity::Ptr>& clusters);
 
-    bool FinalSend(int iLeftId, int iRightId);
 
 private:  
 
@@ -153,10 +188,16 @@ private:
     int m_iScanRings;       //可以把雷达分成多少线
     float m_fFactor;
     
-    int m_iLeftId;
-    int m_iRightId;
+    Eigen::Matrix<float,3,3> R_ToLeftProject;
+    Eigen::Matrix<float,3,3> R_ToRightProject;
+    Eigen::Matrix<float,3,3> R_Inv_ToLeftProject;
+    Eigen::Matrix<float,3,3> R_Inv_ToRightProject;
 
     std::vector<PointCloud2Intensity::Ptr> m_vCloudPtrList;
+
+    std::shared_ptr<pcl::visualization::PCLVisualizer> ground_viewer;
+    std::shared_ptr<pcl::visualization::PCLVisualizer> no_ground_viewer;
+    std::shared_ptr<pcl::visualization::PCLVisualizer> cluster_viewer;
 
     PointCloud2RGB::Ptr m_pAll_deal_cluster_cloud;
     PointCloud2RGB::Ptr m_pAll_output_curve_cloud;
@@ -166,11 +207,11 @@ private:
 
     CurveFitting *m_pCurveFitting;
     Viewer *m_pViewer;
-    Config m_stLCDConfig;
+    STR_CONFIG m_strLCDConfig;
     
     long m_iSystemRunCount;   //记录程序运行次数
     std::queue<LineRunningInfo> m_qLeftLineInfo;
     std::queue<LineRunningInfo> m_qRightLineInfo;
 };
-
+}
 #endif

@@ -7,10 +7,8 @@
 #include "libconfig.h"
 #include "ulog_api.h"
 
-// #include "../3rdparty/libconfig/include/libconfig.h"
-// #include "../3rdparty/ulog/include/ulog_api.h"
 
-int readConfigFile(STR_LIDAR_CONFIG *strLidarConfig,const char* strConfigPath)
+int readConfigFile(STR_LIDAR_CONFIG *strLidarConfig, const char* strConfigPath)
 {
 	//loadConfigFile();
     config_t strCfg;
