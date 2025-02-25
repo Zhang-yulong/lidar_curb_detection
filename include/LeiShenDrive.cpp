@@ -138,22 +138,41 @@ void LeiShenDrive::startGetDataSock(void *pth )
 	((LeiShenDrive*)pth)->GetDataSock();
 }
 
-
 //获取数据包的端口号
 void LeiShenDrive::GetDataSock()
 {
-	//创建socket
-	int m_sock = socket(2, 2, 0);			//构建sock
 	//******************UDP通信初始化**************************//
 	//创建socket
-	m_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	int m_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if( m_sock < 0 ){
-		perror("create getData socket error\n");
+		LOG_RAW("create getData socket error\n");
         exit(0);
 	}
 	else{
-        printf("create getData socket successful\n");
+		LOG_RAW("create getData socket successful\n");
     }
+
+
+	//端口复用
+	int reuse = 1;
+
+	if( setsockopt(m_sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse)) < 0){
+		LOG_RAW("set getData socket error : reuse address\n");
+		close(m_sock);
+		exit(0);
+	}
+	else{
+		LOG_RAW("set getData socket successful : reuse address\n");
+	}
+
+	if( setsockopt(m_sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0){
+		LOG_RAW("set getData socket error : reuse port\n");
+		close(m_sock);
+		exit(0);
+	}
+	else{
+		LOG_RAW("set getData socket successful : reuse port\n");
+	}
 
 	//定义地址
 	struct sockaddr_in sockAddr;
@@ -162,14 +181,13 @@ void LeiShenDrive::GetDataSock()
 	sockAddr.sin_addr.s_addr = inet_addr(m_sComputerIP.c_str());
 
 	//绑定套接字
-	int retVal = bind(m_sock, (struct sockaddr *)&sockAddr, sizeof(sockAddr));
-	
-	if( retVal == -1){
- 		printf("bind getData socket error\n");
+	if( bind(m_sock, (struct sockaddr *)&sockAddr, sizeof(sockAddr)) < 0){
+ 		LOG_RAW("bind getData socket error\n");
+ 		close(m_sock);
         exit(0);
     }
     else{
-        printf("bind getData socket successful\n");
+    	LOG_RAW("bind getData socket successful\n");
     }
 
 	struct sockaddr_in addrFrom;
@@ -183,7 +201,6 @@ void LeiShenDrive::GetDataSock()
 	while (true)
 	{
         //获取套接字接收内容
-
         recvLen = recvfrom(m_sock, recvBuf, sizeof(recvBuf), 0, (sockaddr*)&addrFrom, &len);
 		// printf("recvLen: %d \n", recvLen);
 
@@ -191,48 +208,68 @@ void LeiShenDrive::GetDataSock()
 		{
 			u_char data[1212] = { 0 };
 			memcpy(data, recvBuf, recvLen);
-			m_pGetLidarData->CollectionDataArrive(data, recvLen);	//把数据闯入到类内
+			m_pGetLidarData->CollectionDataArrive(data, recvLen);	//把数据传入到类内
 			// printf("数据放入data\n");
 		}
 	}
-	// close(m_sock);
+	close(m_sock);
 }
 
 //获取设备包的端口号
 void LeiShenDrive::GetDevSock()
 {
-
-	//创建socket
-	int m_sock = socket(2, 2, 0);			//构建sock
 	//******************UDP通信初始化**************************//
 	//创建socket
-	m_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	int m_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if( m_sock < 0 ){
-		perror("create Dev socket error\n");
+		LOG_RAW("create Dev socket error\n");
+		close(m_sock);
         exit(0);
 	}
 	else{
-        printf("create Dev socket successful\n");
+		LOG_RAW("create Dev socket successful\n");
     }
 
+
+	//端口复用
+	int reuse = 1;
+
+	if( setsockopt(m_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+	{
+		LOG_RAW("set Dev socket error : reuse address\n");
+		close(m_sock);
+		exit(0);
+	}
+	else{
+		LOG_RAW("set Dev socket successful : reuse address\n");
+	}
+
+	if( setsockopt(m_sock, SOL_SOCKET, SO_REUSEPORT, (const char *)&reuse, sizeof(reuse)) < 0)
+	{
+		LOG_RAW("set Dev socket error : reuse port\n");
+		close(m_sock);
+		exit(0);
+	}
+	else{
+		LOG_RAW("set Dev socket successful : reuse port\n");
+	}
 
 	//定义地址
 	struct sockaddr_in sockAddr;
 	sockAddr.sin_family = AF_INET;
-	sockAddr.sin_port = htons(m_iDifopPort);											//获取设备包的端口号
+	sockAddr.sin_port = htons(m_iDifopPort);		//获取设备包的端口号
 	sockAddr.sin_addr.s_addr = inet_addr(m_sComputerIP.c_str());
 
 	//绑定套接字
-	int retVal = bind(m_sock, (struct sockaddr *)&sockAddr, sizeof(sockAddr));
-	
-	if( retVal == -1){
- 		printf("bind Dev socket error\n");
-        exit(0);
-    }
-    else{
-        printf("bind Dev socket successful\n");
-    }
-
+	if( bind(m_sock, (struct sockaddr *)&sockAddr, sizeof(sockAddr)) < 0)
+	{
+		LOG_RAW("bind Dev socket error\n");
+		close(m_sock);
+		exit(0);
+	}
+	else{
+		LOG_RAW("bind Dev socket successful\n");
+	}
 	
 	struct sockaddr_in addrFrom;
 
@@ -245,7 +282,6 @@ void LeiShenDrive::GetDevSock()
 	while (true)
 	{
         //获取套接字接收内容
-
         recvLen = recvfrom(m_sock, recvBuf, sizeof(recvBuf), 0, (sockaddr*)&addrFrom, &len);
 
 		if (recvLen > 0)
@@ -255,8 +291,8 @@ void LeiShenDrive::GetDevSock()
 			m_pGetLidarData->CollectionDataArrive(data, recvLen);//把数据传入到类内
 		}
 	}
+	close(m_sock);
 }
-
 
 void LeiShenDrive::VoxelGridProcess(PointCloud2Intensity::Ptr &pOutputCloud){
 
@@ -451,8 +487,8 @@ void LeiShenDrive::Start(){
         {
 			if(!m_vLidarData.empty())
 			{	
-				printf("------------\n");//一帧点云，有m_vLidarData_temp.size()个点
-				printf("进来的m_vLidarData size: %ld \n", m_vLidarData.size());
+
+				LOG_RAW("------------time: %lld , m_vLidarData size: %ld \n", m_ullCatchTimeStamp, m_vLidarData.size());
 				pPointCloud->points.clear();
 
 				/*	没有加入周洋代码前的正常运行代码，pcap回放*/
@@ -522,6 +558,7 @@ void LeiShenDrive::Start(){
 
 			}
 			else{
+				// LOG_RAW("m_vLidarData empty!!!\n");
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 			

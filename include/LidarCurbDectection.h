@@ -96,7 +96,7 @@ public:
 
     const int &GetValueOfScanRings();
 
-    void GroudSegmentationStart(PointCloud2Intensity::Ptr pInCloud, unsigned long long ullTime);
+    int GroudSegmentationStart(PointCloud2Intensity::Ptr pInCloud, unsigned long long ullTime);
     
    
 private:   

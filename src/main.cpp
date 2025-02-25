@@ -7,13 +7,13 @@
 
 #define CvLane_MC_PORT 9139
 
-// #define LOG_CFG_FILE_PATH "/home/zyl/echiev_lidar_curb_detection/config/ulog.cfg"
-#define LOG_CFG_FILE_PATH "/etc/ulog/curb/config/ulog.cfg"
+#define LOG_CFG_FILE_PATH "/home/zyl/echiev_lidar_curb_detection/config/ulog.cfg"
+// #define LOG_CFG_FILE_PATH "/etc/ulog/curb/config/ulog.cfg"
 
 using namespace Lidar_Curb_Dedection;
 
-// std::string Yaml_Path = "/home/zyl/echiev_lidar_curb_detection/config/debug_config.yaml";
-std::string Yaml_Path = "/etc/echiev/bin/debug_config.yaml";
+std::string Yaml_Path = "/home/zyl/echiev_lidar_curb_detection/config/debug_config.yaml";
+// std::string Yaml_Path = "/etc/echiev/bin/debug_config.yaml";
 
 
 STR_LIDAR_CONFIG *strToMainLidarConfig = (STR_LIDAR_CONFIG *)malloc(sizeof(STR_LIDAR_CONFIG));
@@ -114,24 +114,24 @@ int CommInit(const STR_CONFIG &config)
 		iRet_2 = readConfigFile(strToCarConfig, PathToCarConfig);
 	}
 	else{
-		LOG_RAW("pathTolidarTransformConfig 配置错误 \n");
+		LOG_RAW("**** 2 **** pathTolidarTransformConfig 配置错误 \n");
 		return -1;
 	}	
 
 	if(1 == iRet_1){
-		LOG_RAW("read ToMainLidar Config File error\n");
+		LOG_RAW("**** 3 **** read ToMainLidar Config File error\n");
 		return -1;
 	}
 	else{
-		printf("read ToMainLidar Config File successful\n");
+		LOG_RAW("read ToMainLidar Config File successful\n");
 	}
 
 	if(1 == iRet_2){
-		LOG_RAW("read ToCar Config File error\n");
+		LOG_RAW("**** 4 **** read ToCar Config File error\n");
 		return -1;
 	}
 	else{
-		printf("read ToCar Config File successful\n");
+		LOG_RAW("read ToCar Config File successful\n");
 	}
 
 
@@ -144,11 +144,11 @@ int CommInit(const STR_CONFIG &config)
 
 	pthread_mutex_init(&g_SpeedMutex, NULL);
 	if(OpenVSpdMCClient(VSPD_MC_PORT, 0) < 0){
-		LOG_RAW("OpenVSpdMCClient fail.\n");
+		LOG_RAW("**** 5 **** OpenVSpdMCClient fail.\n");
 		return -1;
 	}
 	else{
-		printf("OpenVSpdMCClient successful.\n");
+		LOG_RAW("OpenVSpdMCClient successful.\n");
 	}
 	vehicle_speed_set_callback(speed_set);
 
@@ -163,21 +163,21 @@ int CommInit(const STR_CONFIG &config)
 	
 	pthread_mutex_init(&g_ThreadMutex, NULL);
 	if(OpenfusionLocMCClient(FUSIONLOC_MC_PORT, 0) < 0){
-		LOG_RAW("OpenfusionLocMCClient fail.\n");
+		LOG_RAW("**** 6 **** OpenfusionLocMCClient fail.\n");
 		return -1;
 	}
 	else{
-		printf("OpenfusionLocMCClient successful.\n");
+		LOG_RAW("OpenfusionLocMCClient successful.\n");
 	}
 	fusionLoc_set_callback(fusionLoc_set);
 
 
 	if(OpenCameraLaneMCServer(CvLane_MC_PORT, CvLane_MC_INTERVAL, 0X01) < 0){ 
-		LOG_RAW("OpenCameraLaneMCServer fail.\n");
+		LOG_RAW("**** 7 **** OpenCameraLaneMCServer fail.\n");
 		return -1;
 	}
 	else{
-		printf("OpenCameraLaneMCServer successful.\n");
+		LOG_RAW("OpenCameraLaneMCServer successful.\n");
 	}
 
 	return 0;
@@ -253,7 +253,7 @@ int main()
 	STR_CONFIG strOpencvConfig;
 	YamlReader *pYamlReader = new YamlReader(Yaml_Path);
     if (!pYamlReader->LoadConfig(strOpencvConfig)) {
-		LOG_RAW("debug.yaml加载失败\n");
+		LOG_RAW("**** 1 **** debug.yaml加载失败\n");
         return -1; // 如果加载失败，则退出
     }
 

@@ -265,7 +265,7 @@ double CurveFitting::pointToLineDistance(const cv::Point& point, const LinePolar
 
 PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pInCloud, float yMin, float yMax, unsigned long long ullTime){
 
-    LOG_RAW("进入Curve计算 , size: %d\n",pInCloud->points.size() );
+    // LOG_RAW("进入Curve计算 , 点云数: size: %d\n",pInCloud->points.size() );
     PointCloud2RGB::Ptr curve(new PointCloud2RGB());
 
     int n = pInCloud->points.size();
@@ -356,8 +356,8 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
     double b = mean_y - k * mean_x;    // 截距
     
     Vector2d temp2d(k,b);
-//    std::cout<<"进入之前k,b: (" <<k<<" , "<<b<<")"<<std::endl;
-    LOG_RAW("输出(k: %f , b: %f)\n", k, b);
+    // std::cout<<"进入之前k,b: (" <<k<<" , "<<b<<")"<<std::endl;
+    // LOG_RAW("输出(k: %f , b: %f)\n", k, b);
 
     // m_pKF->setTimeStep(0.2); //时间步长先设定为0.2s
     // m_pKF->predict();
@@ -593,7 +593,8 @@ PointCloud2RGB::Ptr CurveFitting::GenerateCurveRGB(PointCloud2Intensity::Ptr pIn
         }
     }  
    */
-     std::cout<<"拟合直线斜率 = "<< k <<std::endl;
+    
+    //  std::cout<<"拟合直线斜率 = "<< k <<std::endl;
 
     // if(B==0.0)
     //     std::cout<<"拟合直线斜率 =  " << 10000000000 <<std::endl;
@@ -656,7 +657,8 @@ PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::
             temp.z = pCurveRGB->points[i].z;
             temp.intensity = 255;
             pResultCurve->points.push_back(temp);
-            // std::cout<<"第一个点("<<temp.x<<","<<temp.y<<")"<<std::endl;
+            // LOG_RAW("第一个点：( %f , %f )\n", temp.x, temp.y);
+            std::cout<<"第一个点("<<temp.x<<","<<temp.y<<")"<<std::endl;
            
         }
         
@@ -668,7 +670,8 @@ PointCloud2Intensity::Ptr CurveFitting::CurveFittingStart(PointCloud2Intensity::
             temp.z = pCurveRGB->points[i].z;
             temp.intensity = 255;
             pResultCurve->points.push_back(temp);
-            // std::cout<<"最后一个点("<<temp.x<<","<<temp.y<<")"<<std::endl;
+            // LOG_RAW("最后一个点：( %f , %f )\n", temp.x, temp.y);
+            std::cout<<"最后一个点("<<temp.x<<","<<temp.y<<")"<<std::endl;
            
         }
 
